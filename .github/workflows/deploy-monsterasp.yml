@@ -20,12 +20,14 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: |
-            package-lock.json
             client/package-lock.json
             server/package-lock.json
 
-      - name: Install root dependencies
-        run: npm ci
+      # Do NOT run npm ci at repo root — postinstall recursively installs
+      # server + client and breaks on Windows runners (EPERM / nested npm errors).
+
+      - name: Install client dependencies
+        run: npm ci --prefix client
 
       - name: Build client
         run: npm run build --prefix client
