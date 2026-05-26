@@ -57,6 +57,11 @@ npm run dev
 
 ## Online deployment
 
+| Platform | Guide |
+|----------|--------|
+| **MonsterASP.NET** (WebDeploy + GitHub Actions) | [DEPLOYMENT-MONSTERASP.md](./DEPLOYMENT-MONSTERASP.md) |
+| **Render + Vercel + PostgreSQL** | [DEPLOYMENT.md](./DEPLOYMENT.md) |
+
 See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for:
 
 - Render (backend + PostgreSQL)

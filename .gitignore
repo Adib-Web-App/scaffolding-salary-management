@@ -11,6 +11,13 @@ dist/
 server/data/*.db
 server/data/*.db-*
 
+# CI publish output
+publish/
+
+# Never commit hosting credentials
+*.PublishSettings
+*.pubxml.user
+
 # IDE / OS
 .vscode/
 Thumbs.db

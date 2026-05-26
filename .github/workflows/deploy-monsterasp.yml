@@ -1,0 +1,77 @@
+# Deploy to MonsterASP.NET via WebDeploy
+# Docs: https://help.monsterasp.net/books/github/page/how-to-deploy-website-via-github-actions
+name: Deploy to MonsterASP.NET
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build client
+        run: npm run build --prefix client
+
+      - name: Install server production dependencies
+        run: npm ci --omit=dev --prefix server
+
+      - name: Assemble publish package
+        shell: pwsh
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          CLIENT_URL: ${{ secrets.CLIENT_URL }}
+        run: |
+          $publish = "publish"
+          Remove-Item -Recurse -Force $publish -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path "$publish/data", "$publish/logs", "$publish/client/dist" | Out-Null
+
+          Copy-Item deploy/monsterasp/server.js $publish/
+          Copy-Item deploy/monsterasp/web.config $publish/
+          Copy-Item deploy/monsterasp/package.json $publish/
+
+          Copy-Item -Recurse server/src "$publish/server/src"
+          Copy-Item server/package.json "$publish/server/package.json"
+          Copy-Item -Recurse server/node_modules "$publish/server/node_modules"
+
+          Copy-Item -Recurse client/dist/* "$publish/client/dist/"
+
+          $clientUrl = if ($env:CLIENT_URL) { $env:CLIENT_URL } else { "http://scaffolding-salary-management.runasp.net" }
+          $jwt = if ($env:JWT_SECRET) { $env:JWT_SECRET } else { throw "GitHub secret JWT_SECRET is required" }
+
+          @"
+          NODE_ENV=production
+          JWT_SECRET=$jwt
+          CLIENT_URL=$clientUrl
+          DATABASE_PATH=./data/production.db
+          "@ | Set-Content -Path "$publish/.env" -Encoding UTF8
+
+          Write-Host "Publish package ready:"
+          Get-ChildItem $publish -Recurse | Measure-Object | ForEach-Object { Write-Host "  $($_.Count) items" }
+
+      - name: Deploy to MonsterASP.NET via WebDeploy
+        uses: rasmusbuchholdt/simply-web-deploy@2.2.0
+        with:
+          website-name: ${{ secrets.MONSTERASP_WEBSITE_NAME }}
+          server-computer-name: ${{ secrets.MONSTERASP_SERVER_COMPUTER_NAME }}
+          server-username: ${{ secrets.MONSTERASP_SERVER_USERNAME }}
+          server-password: ${{ secrets.MONSTERASP_SERVER_PASSWORD }}
+          source-path: '\publish\'
+          target-delete: false
