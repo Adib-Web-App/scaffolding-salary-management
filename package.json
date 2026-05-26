@@ -1,0 +1,21 @@
+{
+  "name": "scaffolding-salary-management",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scaffolding Salary Management System",
+  "scripts": {
+    "postinstall": "npm install --prefix server && npm install --prefix client",
+    "install:all": "npm install",
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "build": "npm run build --prefix client",
+    "seed": "npm run seed --prefix server",
+    "seed:sample": "npm run seed:sample --prefix server",
+    "db:migrate": "npm run db:migrate --prefix server",
+    "db:seed-users": "npm run db:seed-users --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

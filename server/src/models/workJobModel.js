@@ -1,0 +1,138 @@
+import { all, get, run } from '../db/database.js';
+
+const JOB_SELECT = `
+  SELECT j.*, p.project_name
+  FROM work_jobs j
+  JOIN projects p ON p.id = j.project_id
+`;
+
+export async function findWorkersByJobId(jobId) {
+  return all(
+    `SELECT * FROM work_job_workers WHERE job_id = ? ORDER BY worker_name`,
+    [jobId]
+  );
+}
+
+async function attachWorkers(job) {
+  const workers = await findWorkersByJobId(job.id);
+  return { ...job, workers };
+}
+
+export async function findAllWorkJobs({
+  search = '',
+  dateFrom = '',
+  dateTo = '',
+  worker = '',
+  projectId = '',
+} = {}) {
+  let sql = `${JOB_SELECT} WHERE 1=1`;
+  const params = [];
+
+  if (search) {
+    sql += ` AND (p.project_name LIKE ? OR j.location LIKE ? OR j.id IN (
+      SELECT job_id FROM work_job_workers WHERE worker_name LIKE ?
+    ))`;
+    const term = `%${search}%`;
+    params.push(term, term, term);
+  }
+  if (dateFrom) {
+    sql += ` AND j.entry_date >= ?`;
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    sql += ` AND j.entry_date <= ?`;
+    params.push(dateTo);
+  }
+  if (worker) {
+    sql += ` AND j.id IN (SELECT job_id FROM work_job_workers WHERE worker_name = ?)`;
+    params.push(worker);
+  }
+  if (projectId) {
+    sql += ` AND j.project_id = ?`;
+    params.push(projectId);
+  }
+
+  sql += ` ORDER BY j.entry_date DESC, j.id DESC`;
+  const jobs = await all(sql, params);
+  return Promise.all(jobs.map(attachWorkers));
+}
+
+export async function findWorkJobById(id) {
+  const job = await get(`${JOB_SELECT} WHERE j.id = ?`, [id]);
+  if (!job) return null;
+  return attachWorkers(job);
+}
+
+export async function createWorkJob(jobData, workers) {
+  const {
+    entry_date,
+    project_id,
+    location,
+    work_type,
+    length,
+    width,
+    height,
+    volume,
+    rate,
+    total_salary,
+  } = jobData;
+
+  const result = await run(
+    `INSERT INTO work_jobs (entry_date, project_id, location, work_type, length, width, height, volume, rate, total_salary)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [entry_date, project_id, location || null, work_type, length, width, height, volume, rate, total_salary]
+  );
+
+  for (const w of workers) {
+    await run(
+      `INSERT INTO work_job_workers (job_id, worker_name, individual_salary, volume_share)
+       VALUES (?, ?, ?, ?)`,
+      [result.lastID, w.worker_name, w.individual_salary, w.volume_share]
+    );
+  }
+
+  return findWorkJobById(result.lastID);
+}
+
+export async function updateWorkJob(id, jobData, workers) {
+  const {
+    entry_date,
+    project_id,
+    location,
+    work_type,
+    length,
+    width,
+    height,
+    volume,
+    rate,
+    total_salary,
+  } = jobData;
+
+  await run(
+    `UPDATE work_jobs SET entry_date = ?, project_id = ?, location = ?, work_type = ?, length = ?, width = ?, height = ?,
+     volume = ?, rate = ?, total_salary = ? WHERE id = ?`,
+    [entry_date, project_id, location || null, work_type, length, width, height, volume, rate, total_salary, id]
+  );
+
+  await run(`DELETE FROM work_job_workers WHERE job_id = ?`, [id]);
+  for (const w of workers) {
+    await run(
+      `INSERT INTO work_job_workers (job_id, worker_name, individual_salary, volume_share)
+       VALUES (?, ?, ?, ?)`,
+      [id, w.worker_name, w.individual_salary, w.volume_share]
+    );
+  }
+
+  return findWorkJobById(id);
+}
+
+export async function deleteWorkJob(id) {
+  await run(`DELETE FROM work_job_workers WHERE job_id = ?`, [id]);
+  const result = await run(`DELETE FROM work_jobs WHERE id = ?`, [id]);
+  return result.changes > 0;
+}
+
+export async function getDistinctWorkers() {
+  const rows = await all(`SELECT DISTINCT worker_name FROM work_job_workers ORDER BY worker_name`);
+  return rows.map((r) => r.worker_name);
+}

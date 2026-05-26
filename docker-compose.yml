@@ -1,0 +1,17 @@
+# Optional local PostgreSQL (use with DATABASE_URL in server/.env)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: corebuild-salary-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: corebuild
+      POSTGRES_PASSWORD: corebuild_dev
+      POSTGRES_DB: corebuild_salary
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
