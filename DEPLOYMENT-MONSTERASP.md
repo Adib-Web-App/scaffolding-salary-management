@@ -35,7 +35,7 @@ In **GitHub → your repo → Settings → Secrets and variables → Actions →
 | Secret name | Example / value |
 |-------------|-----------------|
 | `MONSTERASP_WEBSITE_NAME` | `site71031` |
-| `MONSTERASP_SERVER_COMPUTER_NAME` | *(optional)* `https://site71031.siteasp.net:8172` — auto-built if omitted |
+| `MONSTERASP_SERVER_COMPUTER_NAME` | *(optional)* `https://site71031.siteasp.net:8172` only — **not** the full `/msdeploy.axd?site=...` URL (auto-built if omitted) |
 | `MONSTERASP_SERVER_USERNAME` | `site71031` |
 | `MONSTERASP_SERVER_PASSWORD` | Your WebDeploy password |
 | `JWT_SECRET` | Long random string (e.g. 32+ chars) |

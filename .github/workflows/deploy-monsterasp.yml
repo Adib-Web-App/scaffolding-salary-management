@@ -78,7 +78,8 @@ jobs:
         run: |
           $publish = "publish"
           Remove-Item -Recurse -Force $publish -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force -Path "$publish/data", "$publish/logs", "$publish/client/dist" | Out-Null
+          # Do not create publish/data — live SQLite stays in wwwroot/data on server only.
+          New-Item -ItemType Directory -Force -Path "$publish/logs", "$publish/client/dist" | Out-Null
 
           Copy-Item deploy/monsterasp/server.js $publish/
           Copy-Item deploy/monsterasp/web.config $publish/
@@ -103,52 +104,30 @@ jobs:
           Write-Host "Publish package ready:"
           Get-ChildItem $publish -Recurse | Measure-Object | ForEach-Object { Write-Host "  $($_.Count) items" }
 
-      # Official MonsterASP msdeploy URL format (see help.monsterasp.net deploy docs)
-      - name: Deploy to MonsterASP.NET via MSDeploy
+      - name: Resolve WebDeploy server URL
+        id: webdeploy
         shell: pwsh
         run: |
           $site = $env:MONSTERASP_WEBSITE_NAME.Trim()
-          $user = $env:MONSTERASP_SERVER_USERNAME.Trim()
-          $pass = $env:MONSTERASP_SERVER_PASSWORD.Trim()
-
-          if ($env:MONSTERASP_SERVER_COMPUTER_NAME) {
-            $base = $env:MONSTERASP_SERVER_COMPUTER_NAME.Trim().TrimEnd('/')
+          $computer = $env:MONSTERASP_SERVER_COMPUTER_NAME
+          if ([string]::IsNullOrWhiteSpace($computer)) {
+            $computer = "https://${site}.siteasp.net:8172"
           } else {
-            $base = "https://${site}.siteasp.net:8172"
+            $computer = $computer.Trim().TrimEnd('/')
+            # Accept full msdeploy.axd URL pasted by mistake — action needs host:port only
+            $computer = $computer -replace '/msdeploy\.axd(\?.*)?$',''
           }
-          $destUrl = "${base}/msdeploy.axd?site=${site}"
+          Write-Host "WebDeploy server-computer-name: $computer"
+          "computer_name=$computer" >> $env:GITHUB_OUTPUT
 
-          Write-Host "Deploying to site: $site"
-          Write-Host "MSDeploy URL: $destUrl"
-          Write-Host "Username: $user"
-
-          $msdeploy = @(
-            "${env:ProgramFiles}\IIS\Microsoft Web Deploy V3\msdeploy.exe",
-            "${env:ProgramFiles(x86)}\IIS\Microsoft Web Deploy V3\msdeploy.exe"
-          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-
-          if (-not $msdeploy) {
-            throw "Web Deploy (msdeploy.exe) not found on runner."
-          }
-
-          $source = Join-Path $PWD "publish"
-          # Entire -dest value must be ONE argument (commas are msdeploy syntax, not PowerShell separators).
-          $destSpec = "contentPath=$site,computerName=$destUrl,userName=$user,password=$pass,authtype=Basic"
-
-          # CRITICAL: Never sync wwwroot/data/ — production.db lives only on the host.
-          # See PRODUCTION-DEPLOYMENT.md. Do not remove this skip rule.
-          & $msdeploy @(
-            '-verb:sync',
-            "-source:contentPath=$source",
-            "-dest:$destSpec",
-            '-allowUntrusted',
-            '-disableLink:AppPoolExtension',
-            '-disableLink:ContentExtension',
-            '-disableLink:CertificateExtension',
-            '-skip:objectName=dirPath,absolutePath=.*[\\/]data$',
-            '-verbose'
-          )
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "MSDeploy failed with exit code $LASTEXITCODE. Check WebDeploy password in MonsterASP panel (not FTP password)."
-          }
+      # Same action that succeeded 2026-05-26. target-delete:false + skip data protects production.db
+      - name: Deploy to MonsterASP.NET via WebDeploy
+        uses: rasmusbuchholdt/simply-web-deploy@2.2.0
+        with:
+          website-name: ${{ secrets.MONSTERASP_WEBSITE_NAME }}
+          server-computer-name: ${{ steps.webdeploy.outputs.computer_name }}
+          server-username: ${{ secrets.MONSTERASP_SERVER_USERNAME }}
+          server-password: ${{ secrets.MONSTERASP_SERVER_PASSWORD }}
+          source-path: '\publish\'
+          target-delete: false
+          skip-directory-paths: data
