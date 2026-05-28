@@ -13,9 +13,17 @@ export async function findWorkersByJobId(jobId) {
   );
 }
 
+export async function findDimensionsByJobId(jobId) {
+  return all(
+    `SELECT * FROM work_job_dimensions WHERE work_entry_id = ? ORDER BY id`,
+    [jobId]
+  );
+}
+
 async function attachWorkers(job) {
   const workers = await findWorkersByJobId(job.id);
-  return { ...job, workers };
+  const dimensions = await findDimensionsByJobId(job.id);
+  return { ...job, workers, dimensions };
 }
 
 export async function findAllWorkJobs({
@@ -63,7 +71,7 @@ export async function findWorkJobById(id) {
   return attachWorkers(job);
 }
 
-export async function createWorkJob(jobData, workers) {
+export async function createWorkJob(jobData, workers, dimensions = []) {
   const {
     entry_date,
     project_id,
@@ -75,12 +83,13 @@ export async function createWorkJob(jobData, workers) {
     volume,
     rate,
     total_salary,
+    remarks,
   } = jobData;
 
   const result = await run(
-    `INSERT INTO work_jobs (entry_date, project_id, location, work_type, length, width, height, volume, rate, total_salary)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [entry_date, project_id, location || null, work_type, length, width, height, volume, rate, total_salary]
+    `INSERT INTO work_jobs (entry_date, project_id, location, work_type, length, width, height, volume, rate, total_salary, remarks)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [entry_date, project_id, location || null, work_type, length, width, height, volume, rate, total_salary, remarks || null]
   );
 
   for (const w of workers) {
@@ -90,11 +99,18 @@ export async function createWorkJob(jobData, workers) {
       [result.lastID, w.worker_name, w.individual_salary, w.volume_share]
     );
   }
+  for (const d of dimensions) {
+    await run(
+      `INSERT INTO work_job_dimensions (work_entry_id, length, width, height, volume, remarks)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [result.lastID, d.length, d.width, d.height, d.volume, null]
+    );
+  }
 
   return findWorkJobById(result.lastID);
 }
 
-export async function updateWorkJob(id, jobData, workers) {
+export async function updateWorkJob(id, jobData, workers, dimensions = []) {
   const {
     entry_date,
     project_id,
@@ -106,12 +122,13 @@ export async function updateWorkJob(id, jobData, workers) {
     volume,
     rate,
     total_salary,
+    remarks,
   } = jobData;
 
   await run(
     `UPDATE work_jobs SET entry_date = ?, project_id = ?, location = ?, work_type = ?, length = ?, width = ?, height = ?,
-     volume = ?, rate = ?, total_salary = ? WHERE id = ?`,
-    [entry_date, project_id, location || null, work_type, length, width, height, volume, rate, total_salary, id]
+     volume = ?, rate = ?, total_salary = ?, remarks = ? WHERE id = ?`,
+    [entry_date, project_id, location || null, work_type, length, width, height, volume, rate, total_salary, remarks || null, id]
   );
 
   await run(`DELETE FROM work_job_workers WHERE job_id = ?`, [id]);
@@ -122,11 +139,20 @@ export async function updateWorkJob(id, jobData, workers) {
       [id, w.worker_name, w.individual_salary, w.volume_share]
     );
   }
+  await run(`DELETE FROM work_job_dimensions WHERE work_entry_id = ?`, [id]);
+  for (const d of dimensions) {
+    await run(
+      `INSERT INTO work_job_dimensions (work_entry_id, length, width, height, volume, remarks)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, d.length, d.width, d.height, d.volume, null]
+    );
+  }
 
   return findWorkJobById(id);
 }
 
 export async function deleteWorkJob(id) {
+  await run(`DELETE FROM work_job_dimensions WHERE work_entry_id = ?`, [id]);
   await run(`DELETE FROM work_job_workers WHERE job_id = ?`, [id]);
   const result = await run(`DELETE FROM work_jobs WHERE id = ?`, [id]);
   return result.changes > 0;

@@ -10,7 +10,45 @@ on:
 jobs:
   build_and_deploy:
     runs-on: windows-latest
+    env:
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      CLIENT_URL: ${{ secrets.CLIENT_URL }}
+      MONSTERASP_WEBSITE_NAME: ${{ secrets.MONSTERASP_WEBSITE_NAME }}
+      MONSTERASP_SERVER_COMPUTER_NAME: ${{ secrets.MONSTERASP_SERVER_COMPUTER_NAME }}
+      MONSTERASP_SERVER_USERNAME: ${{ secrets.MONSTERASP_SERVER_USERNAME }}
+      MONSTERASP_SERVER_PASSWORD: ${{ secrets.MONSTERASP_SERVER_PASSWORD }}
     steps:
+      - name: Validate required secrets
+        shell: pwsh
+        run: |
+          $missing = @()
+          if (-not $env:JWT_SECRET) { $missing += 'JWT_SECRET' }
+          if (-not $env:MONSTERASP_WEBSITE_NAME) { $missing += 'MONSTERASP_WEBSITE_NAME' }
+          if (-not $env:MONSTERASP_SERVER_USERNAME) { $missing += 'MONSTERASP_SERVER_USERNAME' }
+          if (-not $env:MONSTERASP_SERVER_PASSWORD) { $missing += 'MONSTERASP_SERVER_PASSWORD' }
+          if ($missing.Count -gt 0) {
+            Write-Error @"
+          Missing GitHub Actions secrets. Add them at:
+          Repository → Settings → Secrets and variables → Actions → New repository secret
+
+          Required:
+            JWT_SECRET
+            MONSTERASP_WEBSITE_NAME       e.g. site71031
+            MONSTERASP_SERVER_USERNAME    e.g. site71031 (same as website name)
+            MONSTERASP_SERVER_PASSWORD    WebDeploy password ONLY (from MonsterASP panel)
+
+          Optional:
+            CLIENT_URL
+            MONSTERASP_SERVER_COMPUTER_NAME  (auto-built from website name if omitted)
+
+          Missing now: $($missing -join ', ')
+          "@
+          }
+          # Trim accidental spaces/newlines from copy-paste
+          echo "MONSTERASP_WEBSITE_NAME=$($env:MONSTERASP_WEBSITE_NAME.Trim())" >> $env:GITHUB_ENV
+          echo "MONSTERASP_SERVER_USERNAME=$($env:MONSTERASP_SERVER_USERNAME.Trim())" >> $env:GITHUB_ENV
+          echo "MONSTERASP_SERVER_PASSWORD=$($env:MONSTERASP_SERVER_PASSWORD.Trim())" >> $env:GITHUB_ENV
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -37,9 +75,6 @@ jobs:
 
       - name: Assemble publish package
         shell: pwsh
-        env:
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          CLIENT_URL: ${{ secrets.CLIENT_URL }}
         run: |
           $publish = "publish"
           Remove-Item -Recurse -Force $publish -ErrorAction SilentlyContinue
@@ -56,7 +91,7 @@ jobs:
           Copy-Item -Recurse client/dist/* "$publish/client/dist/"
 
           $clientUrl = if ($env:CLIENT_URL) { $env:CLIENT_URL } else { "http://scaffolding-salary-management.runasp.net" }
-          $jwt = if ($env:JWT_SECRET) { $env:JWT_SECRET } else { throw "GitHub secret JWT_SECRET is required" }
+          $jwt = $env:JWT_SECRET
 
           @"
           NODE_ENV=production
@@ -68,12 +103,48 @@ jobs:
           Write-Host "Publish package ready:"
           Get-ChildItem $publish -Recurse | Measure-Object | ForEach-Object { Write-Host "  $($_.Count) items" }
 
-      - name: Deploy to MonsterASP.NET via WebDeploy
-        uses: rasmusbuchholdt/simply-web-deploy@2.2.0
-        with:
-          website-name: ${{ secrets.MONSTERASP_WEBSITE_NAME }}
-          server-computer-name: ${{ secrets.MONSTERASP_SERVER_COMPUTER_NAME }}
-          server-username: ${{ secrets.MONSTERASP_SERVER_USERNAME }}
-          server-password: ${{ secrets.MONSTERASP_SERVER_PASSWORD }}
-          source-path: '\publish\'
-          target-delete: false
+      # Official MonsterASP msdeploy URL format (see help.monsterasp.net deploy docs)
+      - name: Deploy to MonsterASP.NET via MSDeploy
+        shell: pwsh
+        run: |
+          $site = $env:MONSTERASP_WEBSITE_NAME.Trim()
+          $user = $env:MONSTERASP_SERVER_USERNAME.Trim()
+          $pass = $env:MONSTERASP_SERVER_PASSWORD.Trim()
+
+          if ($env:MONSTERASP_SERVER_COMPUTER_NAME) {
+            $base = $env:MONSTERASP_SERVER_COMPUTER_NAME.Trim().TrimEnd('/')
+          } else {
+            $base = "https://${site}.siteasp.net:8172"
+          }
+          $destUrl = "${base}/msdeploy.axd?site=${site}"
+
+          Write-Host "Deploying to site: $site"
+          Write-Host "MSDeploy URL: $destUrl"
+          Write-Host "Username: $user"
+
+          $msdeploy = @(
+            "${env:ProgramFiles}\IIS\Microsoft Web Deploy V3\msdeploy.exe",
+            "${env:ProgramFiles(x86)}\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $msdeploy) {
+            throw "Web Deploy (msdeploy.exe) not found on runner."
+          }
+
+          $source = Join-Path $PWD "publish"
+          # CRITICAL: Never sync wwwroot/data/ — production.db lives only on the host.
+          # See PRODUCTION-DEPLOYMENT.md. Do not remove this skip rule.
+          & $msdeploy `
+            -verb:sync `
+            -source:contentPath="$source" `
+            -dest:contentPath="$site",computerName="$destUrl",userName="$user",password="$pass",authtype="Basic" `
+            -allowUntrusted `
+            -disableLink:AppPoolExtension `
+            -disableLink:ContentExtension `
+            -disableLink:CertificateExtension `
+            -skip:objectName=dirPath,absolutePath=.*[\\/]data$ `
+            -verbose
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "MSDeploy failed with exit code $LASTEXITCODE. Check WebDeploy password in MonsterASP panel (not FTP password)."
+          }

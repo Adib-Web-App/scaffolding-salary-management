@@ -113,6 +113,43 @@ async function migrateWorkJobsLocationColumn() {
   }
 }
 
+async function migrateWorkJobsRemarksColumn() {
+  const columns = await all(`PRAGMA table_info(work_jobs)`);
+  const hasRemarks = columns.some((c) => c.name === 'remarks');
+  if (!hasRemarks) {
+    await run(`ALTER TABLE work_jobs ADD COLUMN remarks TEXT`);
+  }
+}
+
+async function migrateWorkJobDimensionsTable() {
+  await run(`
+    CREATE TABLE IF NOT EXISTS work_job_dimensions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_entry_id INTEGER NOT NULL,
+      length REAL NOT NULL,
+      width REAL NOT NULL,
+      height REAL NOT NULL,
+      volume REAL NOT NULL,
+      remarks TEXT,
+      FOREIGN KEY (work_entry_id) REFERENCES work_jobs(id) ON DELETE CASCADE
+    )
+  `);
+  await run(
+    `CREATE INDEX IF NOT EXISTS idx_work_job_dimensions_entry ON work_job_dimensions(work_entry_id)`
+  );
+}
+
+async function migrateExistingJobsToDimensionLines() {
+  await run(`
+    INSERT INTO work_job_dimensions (work_entry_id, length, width, height, volume, remarks)
+    SELECT j.id, j.length, j.width, j.height, j.volume, NULL
+    FROM work_jobs j
+    WHERE NOT EXISTS (
+      SELECT 1 FROM work_job_dimensions d WHERE d.work_entry_id = j.id
+    )
+  `);
+}
+
 export async function initDatabase() {
   await run(`
     CREATE TABLE IF NOT EXISTS projects (
@@ -136,6 +173,7 @@ export async function initDatabase() {
       volume REAL NOT NULL,
       rate REAL NOT NULL,
       total_salary REAL NOT NULL,
+      remarks TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT
     )
@@ -151,6 +189,8 @@ export async function initDatabase() {
       FOREIGN KEY (job_id) REFERENCES work_jobs(id) ON DELETE CASCADE
     )
   `);
+
+  await migrateWorkJobDimensionsTable();
 
   await run(`
     CREATE TABLE IF NOT EXISTS advances (
@@ -196,7 +236,10 @@ export async function initDatabase() {
 
   await migrateAdvancesProjectColumn();
   await migrateWorkJobsLocationColumn();
+  await migrateWorkJobsRemarksColumn();
   await migrateLegacyWorkEntries();
+  await migrateExistingJobsToDimensionLines();
+  // Idempotent: inserts default users only when users table is empty (never deletes/resets).
   await seedDefaultUsers(parseCount);
   console.log(`SQLite database ready (${DB_PATH})`);
 }

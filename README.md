@@ -36,6 +36,12 @@ All financial values use **Malaysian Ringgit**: `RM 0.00`
 6. **Attendance** — Present/absent tracking, monthly summary, worker history
 7. **Payroll & Payslip** — Monthly preview and PDF download
 
+## Production deployment (live data)
+
+If the system is **already online with real data**, read **[PRODUCTION-DEPLOYMENT.md](./PRODUCTION-DEPLOYMENT.md)** before deploying or running database commands.
+
+- GitHub Actions deploy to MonsterASP: [DEPLOYMENT-MONSTERASP.md](./DEPLOYMENT-MONSTERASP.md)
+
 ## Prerequisites
 
 - Node.js 18+

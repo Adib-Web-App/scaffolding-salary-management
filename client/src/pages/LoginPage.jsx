@@ -102,9 +102,6 @@ export default function LoginPage() {
             {submitting ? 'Signing in...' : 'Sign In'}
           </button>
 
-          <p className="mt-6 text-center text-xs text-slate-500">
-            Default: admin / admin123 · supervisor / supervisor123 · viewer / viewer123
-          </p>
         </form>
       </div>
     </div>

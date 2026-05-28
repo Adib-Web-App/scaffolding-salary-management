@@ -1,7 +1,10 @@
 import 'dotenv/config';
+import { assertNotProductionSeed } from './productionSafety.js';
 import { initDatabase, closeDatabase, get } from './database.js';
 import { seedDefaultUsers } from './seedUsers.js';
 import { parseCount } from './sqlUtils.js';
+
+assertNotProductionSeed('npm run db:seed-users');
 
 async function main() {
   await initDatabase();

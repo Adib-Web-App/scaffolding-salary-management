@@ -1,6 +1,9 @@
 import 'dotenv/config';
+import { assertNotProductionSeed } from './productionSafety.js';
 import { initDatabase, run, get, closeDatabase } from './database.js';
 import { parseCount } from './sqlUtils.js';
+
+assertNotProductionSeed('npm run seed');
 import {
   SAMPLE_JOBS,
   SAMPLE_ADVANCES,

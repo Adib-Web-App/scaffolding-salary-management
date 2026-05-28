@@ -3,7 +3,7 @@ import * as projectModel from '../models/projectModel.js';
 import * as salaryService from '../services/salaryService.js';
 
 async function buildJobPayload(body) {
-  const { entry_date, project_id, work_type, length, width, height, workers } = body;
+  const { entry_date, project_id, work_type, workers } = body;
 
   if (!entry_date || !project_id || !work_type) {
     const err = new Error('Date, project, and work type are required');
@@ -31,26 +31,33 @@ async function buildJobPayload(body) {
     throw err;
   }
 
-  const calc = salaryService.buildJobCalculations(
-    project,
-    work_type,
-    length,
-    width,
-    height,
-    workerList
-  );
+  const dimensionsInput =
+    Array.isArray(body.dimensions) && body.dimensions.length > 0
+      ? body.dimensions
+      : [
+          {
+            length: body.length,
+            width: body.width,
+            height: body.height,
+          },
+        ];
+
+  const calc = salaryService.buildJobCalculations(project, work_type, dimensionsInput, workerList);
+  const firstDimension = calc.dimensions[0] || { length: 0, width: 0, height: 0 };
 
   return {
     entry_date,
     project_id: Number(project_id),
     location: body.location?.trim() || '',
     work_type,
-    length: Number(length) || 0,
-    width: Number(width) || 0,
-    height: Number(height) || 0,
+    length: firstDimension.length,
+    width: firstDimension.width,
+    height: firstDimension.height,
     volume: calc.volume,
     rate: calc.rate,
     total_salary: calc.total_salary,
+    remarks: body.remarks?.trim() || '',
+    dimensions: calc.dimensions,
     workers: calc.workers,
   };
 }
@@ -85,8 +92,8 @@ export async function getWorkEntry(req, res, next) {
 export async function createWorkEntry(req, res, next) {
   try {
     const payload = await buildJobPayload(req.body);
-    const { workers, ...jobData } = payload;
-    const job = await workJobModel.createWorkJob(jobData, workers);
+    const { workers, dimensions, ...jobData } = payload;
+    const job = await workJobModel.createWorkJob(jobData, workers, dimensions);
     res.status(201).json({ success: true, data: job });
   } catch (err) {
     if (err.status) {
@@ -106,10 +113,20 @@ export async function updateWorkEntry(req, res, next) {
       ...existing,
       ...req.body,
       workers: req.body.workers ?? existing.workers?.map((w) => w.worker_name),
+      dimensions:
+        req.body.dimensions ??
+        existing.dimensions ??
+        [
+          {
+            length: existing.length,
+            width: existing.width,
+            height: existing.height,
+          },
+        ],
     };
     const payload = await buildJobPayload(merged);
-    const { workers, ...jobData } = payload;
-    const job = await workJobModel.updateWorkJob(req.params.id, jobData, workers);
+    const { workers, dimensions, ...jobData } = payload;
+    const job = await workJobModel.updateWorkJob(req.params.id, jobData, workers, dimensions);
     res.json({ success: true, data: job });
   } catch (err) {
     if (err.status) {
@@ -133,24 +150,22 @@ export async function deleteWorkEntry(req, res, next) {
 
 export async function previewCalculation(req, res, next) {
   try {
-    const { project_id, work_type, length, width, height, workers } = req.body;
+    const { project_id, work_type, workers, dimensions, length, width, height } = req.body;
     const project = await projectModel.findProjectById(project_id);
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
     const workerList = Array.isArray(workers) ? workers : ['Worker'];
-    const calc = salaryService.buildJobCalculations(
-      project,
-      work_type,
-      length,
-      width,
-      height,
-      workerList
-    );
+    const dimensionsInput =
+      Array.isArray(dimensions) && dimensions.length > 0
+        ? dimensions
+        : [{ length, width, height }];
+    const calc = salaryService.buildJobCalculations(project, work_type, dimensionsInput, workerList);
     res.json({
       success: true,
       data: {
         volume: calc.volume,
+        total_volume: calc.volume,
         rate: calc.rate,
         total_salary: calc.total_salary,
         individual_salary: calc.workers[0]?.individual_salary || 0,

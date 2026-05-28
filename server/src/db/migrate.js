@@ -1,8 +1,10 @@
 import 'dotenv/config';
+import { logProductionMaintenance } from './productionSafety.js';
 import { initDatabase, closeDatabase, getDialect } from './database.js';
 
 async function migrate() {
   try {
+    logProductionMaintenance('db:migrate');
     const dialect = await initDatabase();
     console.log(`Migration complete (${dialect})`);
   } catch (err) {

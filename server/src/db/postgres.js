@@ -57,6 +57,38 @@ export async function all(sql, params = []) {
   return result.rows;
 }
 
+async function migrateWorkJobsColumns() {
+  await getPool().query(`ALTER TABLE work_jobs ADD COLUMN IF NOT EXISTS location TEXT`);
+  await getPool().query(`ALTER TABLE work_jobs ADD COLUMN IF NOT EXISTS remarks TEXT`);
+}
+
+async function migrateWorkJobDimensionsTable() {
+  await getPool().query(`
+    CREATE TABLE IF NOT EXISTS work_job_dimensions (
+      id SERIAL PRIMARY KEY,
+      work_entry_id INTEGER NOT NULL REFERENCES work_jobs(id) ON DELETE CASCADE,
+      length DOUBLE PRECISION NOT NULL,
+      width DOUBLE PRECISION NOT NULL,
+      height DOUBLE PRECISION NOT NULL,
+      volume DOUBLE PRECISION NOT NULL,
+      remarks TEXT
+    )
+  `);
+  await getPool().query(
+    `CREATE INDEX IF NOT EXISTS idx_work_job_dimensions_entry ON work_job_dimensions(work_entry_id)`
+  );
+}
+
+async function migrateExistingJobsToDimensionLines() {
+  await getPool().query(`
+    INSERT INTO work_job_dimensions (work_entry_id, length, width, height, volume, remarks)
+    SELECT j.id, j.length, j.width, j.height, j.volume, NULL
+    FROM work_jobs j
+    LEFT JOIN work_job_dimensions d ON d.work_entry_id = j.id
+    WHERE d.id IS NULL
+  `);
+}
+
 export async function initDatabase() {
   const schemaPath = path.join(__dirname, 'schema.postgres.sql');
   const schema = fs.readFileSync(schemaPath, 'utf8');
@@ -68,6 +100,10 @@ export async function initDatabase() {
   for (const statement of statements) {
     await getPool().query(statement);
   }
+
+  await migrateWorkJobsColumns();
+  await migrateWorkJobDimensionsTable();
+  await migrateExistingJobsToDimensionLines();
 
   await seedDefaultUsers(parseCount);
   console.log('PostgreSQL database initialized');

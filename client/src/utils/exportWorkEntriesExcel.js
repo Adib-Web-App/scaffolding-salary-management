@@ -12,6 +12,7 @@ const HEADERS = [
   'Length',
   'Width',
   'Height',
+  'Line Volume',
   'Total Volume',
   'Rate (RM)',
   'Total Salary (RM)',
@@ -19,8 +20,8 @@ const HEADERS = [
   'Remarks',
 ];
 
-/** Column indexes merged vertically per job (1-based). Excludes Worker and Salary Per Worker. */
-const MERGE_COLUMN_INDEXES = [1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 13];
+/** Column indexes merged vertically per job (1-based). */
+const JOB_MERGE_COLUMN_INDEXES = [1, 2, 3, 4, 10, 11, 12, 14];
 
 const BORDER_STYLE = {
   top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
@@ -63,9 +64,7 @@ export function normalizeJobsForExport(jobs) {
         project_name: item.project_name,
         location: item.location || '',
         work_type: item.work_type,
-        length: item.length,
-        width: item.width,
-        height: item.height,
+        dimensions: [],
         volume: item.volume,
         rate: item.rate,
         total_salary: item.total_salary,
@@ -77,6 +76,7 @@ export function normalizeJobsForExport(jobs) {
     const job = byId.get(id);
     mergeJobFields(job, item);
     collectWorkers(job, item);
+    collectDimensions(job, item);
   }
 
   return Array.from(byId.values());
@@ -88,9 +88,6 @@ function mergeJobFields(target, source) {
     'project_name',
     'location',
     'work_type',
-    'length',
-    'width',
-    'height',
     'volume',
     'rate',
     'total_salary',
@@ -131,40 +128,74 @@ function collectWorkers(job, item) {
   }
 }
 
+function collectDimensions(job, item) {
+  const source =
+    Array.isArray(item.dimensions) && item.dimensions.length > 0
+      ? item.dimensions
+      : [
+          {
+            length: item.length,
+            width: item.width,
+            height: item.height,
+            volume: item.volume,
+          },
+        ];
+
+  for (const line of source) {
+    const length = Number(line.length) || 0;
+    const width = Number(line.width) || 0;
+    const height = Number(line.height) || 0;
+    const volume = Number(line.volume) || length * width * height;
+    if (length <= 0 || width <= 0 || height <= 0) continue;
+    // Keep every dimension line as-is, including repeated L/W/H values.
+    job.dimensions.push({
+      length,
+      width,
+      height,
+      volume,
+    });
+  }
+}
+
 /**
- * One row per worker; shared job values only on the first row (merged vertically).
+ * Create rows as [worker x dimension], preserving duplicate dimensions by index.
  */
 function expandJobToWorkerRows(job) {
-  const workers = job.workers?.length
-    ? job.workers
-    : [{ worker_name: '', individual_salary: 0 }];
+  const dimensions = job.dimensions?.length
+    ? job.dimensions
+    : [{ length: Number(job.length) || 0, width: Number(job.width) || 0, height: Number(job.height) || 0, volume: Number(job.volume) || 0 }];
+  const workers = job.workers?.length ? job.workers : [{ worker_name: '', individual_salary: 0 }];
+  const defaultPerWorker = workers.length ? Number(job.total_salary) / workers.length : 0;
 
-  const defaultPerWorker =
-    workers[0]?.individual_salary ??
-    (workers.length ? Number(job.total_salary) / workers.length : 0);
-
-  return workers.map((worker, index) => {
-    const isFirst = index === 0;
-    const salaryPerWorker = Number(
-      worker.individual_salary ?? defaultPerWorker ?? 0
-    );
-
-    return [
-      isFirst ? job.entry_date : '',
-      isFirst ? job.project_name : '',
-      isFirst ? job.location || '' : '',
-      isFirst ? job.work_type : '',
-      worker.worker_name || '',
-      isFirst ? Number(job.length) || 0 : '',
-      isFirst ? Number(job.width) || 0 : '',
-      isFirst ? Number(job.height) || 0 : '',
-      isFirst ? Number(job.volume) || 0 : '',
-      isFirst ? Number(job.rate) || 0 : '',
-      isFirst ? Number(job.total_salary) || 0 : '',
-      salaryPerWorker,
-      isFirst ? job.remarks || '-' : '',
-    ];
+  const rows = [];
+  const workerSalaryBlocks = [];
+  workers.forEach((worker, workerIndex) => {
+    const blockStart = rows.length;
+    dimensions.forEach((line, lineIndex) => {
+      const isFirstJobRow = workerIndex === 0 && lineIndex === 0;
+      const salaryPerWorker = Number(worker.individual_salary ?? defaultPerWorker ?? 0);
+      rows.push([
+        isFirstJobRow ? job.entry_date : '',
+        isFirstJobRow ? job.project_name : '',
+        isFirstJobRow ? job.location || '' : '',
+        isFirstJobRow ? job.work_type : '',
+        worker.worker_name || '',
+        Number(line.length) || 0,
+        Number(line.width) || 0,
+        Number(line.height) || 0,
+        Number(line.volume) || 0,
+        isFirstJobRow ? Number(job.volume) || 0 : '',
+        isFirstJobRow ? Number(job.rate) || 0 : '',
+        isFirstJobRow ? Number(job.total_salary) || 0 : '',
+        salaryPerWorker,
+        isFirstJobRow ? job.remarks || '-' : '',
+      ]);
+    });
+    const blockEnd = rows.length - 1;
+    workerSalaryBlocks.push({ start: blockStart, end: blockEnd });
   });
+
+  return { rows, workerSalaryBlocks };
 }
 
 function applyRowFormats(row) {
@@ -179,9 +210,10 @@ function applyRowFormats(row) {
   formatIfNumber(7, NUMBER_FORMAT);
   formatIfNumber(8, NUMBER_FORMAT);
   formatIfNumber(9, NUMBER_FORMAT);
-  formatIfNumber(10, RM_FORMAT);
+  formatIfNumber(10, NUMBER_FORMAT);
   formatIfNumber(11, RM_FORMAT);
   formatIfNumber(12, RM_FORMAT);
+  formatIfNumber(13, RM_FORMAT);
 }
 
 function applyCellBorder(cell) {
@@ -191,9 +223,22 @@ function applyCellBorder(cell) {
 function mergeJobRowCells(sheet, startRow, endRow) {
   if (endRow <= startRow) return;
 
-  for (const col of MERGE_COLUMN_INDEXES) {
+  for (const col of JOB_MERGE_COLUMN_INDEXES) {
     sheet.mergeCells(startRow, col, endRow, col);
     const cell = sheet.getCell(startRow, col);
+    cell.alignment = MERGED_CELL_ALIGNMENT;
+  }
+}
+
+function mergeWorkerSalaryCells(sheet, jobStartRow, workerSalaryBlocks) {
+  const salaryColumnIndex = 13;
+  for (const block of workerSalaryBlocks) {
+    const startRow = jobStartRow + block.start;
+    const endRow = jobStartRow + block.end;
+    if (endRow <= startRow) continue;
+
+    sheet.mergeCells(startRow, salaryColumnIndex, endRow, salaryColumnIndex);
+    const cell = sheet.getCell(startRow, salaryColumnIndex);
     cell.alignment = MERGED_CELL_ALIGNMENT;
   }
 }
@@ -204,12 +249,14 @@ function styleDataRow(row, isFirstRowOfJob) {
   row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
     applyCellBorder(cell);
 
-    if (MERGE_COLUMN_INDEXES.includes(colNumber)) {
+    if (JOB_MERGE_COLUMN_INDEXES.includes(colNumber)) {
       if (isFirstRowOfJob) {
         cell.alignment = MERGED_CELL_ALIGNMENT;
       }
-    } else if (colNumber === 5 || colNumber === 12) {
+    } else if (colNumber === 5 || colNumber === 14) {
       cell.alignment = { vertical: 'middle', horizontal: 'left' };
+    } else if (colNumber >= 6 && colNumber <= 9) {
+      cell.alignment = { vertical: 'middle', horizontal: 'right' };
     }
   });
 }
@@ -248,10 +295,10 @@ export async function exportWorkEntriesToExcel(jobs) {
   let rowCount = 0;
 
   sorted.forEach((job) => {
-    const workerRows = expandJobToWorkerRows(job);
+    const { rows, workerSalaryBlocks } = expandJobToWorkerRows(job);
     const jobStartRow = sheet.lastRow.number + 1;
 
-    workerRows.forEach((values, index) => {
+    rows.forEach((values, index) => {
       const row = sheet.addRow(values);
       styleDataRow(row, index === 0);
       rowCount++;
@@ -259,6 +306,7 @@ export async function exportWorkEntriesToExcel(jobs) {
 
     const jobEndRow = sheet.lastRow.number;
     mergeJobRowCells(sheet, jobStartRow, jobEndRow);
+    mergeWorkerSalaryCells(sheet, jobStartRow, workerSalaryBlocks);
   });
 
   const lastDataRow = sheet.lastRow.number;

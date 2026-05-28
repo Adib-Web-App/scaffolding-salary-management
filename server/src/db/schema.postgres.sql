@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS work_jobs (
   volume DOUBLE PRECISION NOT NULL,
   rate DOUBLE PRECISION NOT NULL,
   total_salary DOUBLE PRECISION NOT NULL,
+  remarks TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -29,6 +30,16 @@ CREATE TABLE IF NOT EXISTS work_job_workers (
   worker_name TEXT NOT NULL,
   individual_salary DOUBLE PRECISION NOT NULL,
   volume_share DOUBLE PRECISION NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS work_job_dimensions (
+  id SERIAL PRIMARY KEY,
+  work_entry_id INTEGER NOT NULL REFERENCES work_jobs(id) ON DELETE CASCADE,
+  length DOUBLE PRECISION NOT NULL,
+  width DOUBLE PRECISION NOT NULL,
+  height DOUBLE PRECISION NOT NULL,
+  volume DOUBLE PRECISION NOT NULL,
+  remarks TEXT
 );
 
 CREATE TABLE IF NOT EXISTS advances (
@@ -61,6 +72,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_work_jobs_date ON work_jobs(entry_date);
 CREATE INDEX IF NOT EXISTS idx_work_jobs_project ON work_jobs(project_id);
 CREATE INDEX IF NOT EXISTS idx_work_job_workers_name ON work_job_workers(worker_name);
+CREATE INDEX IF NOT EXISTS idx_work_job_dimensions_entry ON work_job_dimensions(work_entry_id);
 CREATE INDEX IF NOT EXISTS idx_advances_date ON advances(advance_date);
 CREATE INDEX IF NOT EXISTS idx_advances_worker ON advances(worker_name);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(attendance_date);

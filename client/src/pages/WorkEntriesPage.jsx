@@ -12,15 +12,25 @@ const emptyForm = () => ({
   project_id: '',
   location: '',
   work_type: 'Erection',
-  length: '',
-  width: '',
-  height: '',
+  remarks: '',
+  dimensions: [{ length: '', width: '', height: '', volume: 0 }],
   workers: [''],
   volume: 0,
   rate: 0,
   total_salary: 0,
   individual_salary: 0,
 });
+
+const parseNumber = (value) => Number(value || 0);
+
+const calculateLineVolume = (line) =>
+  parseNumber(line.length) * parseNumber(line.width) * parseNumber(line.height);
+
+const normalizeDimensions = (dimensions = []) =>
+  dimensions.map((line) => ({
+    ...line,
+    volume: calculateLineVolume(line),
+  }));
 
 export default function WorkEntriesPage() {
   const { hasPermission } = useAuth();
@@ -32,6 +42,7 @@ export default function WorkEntriesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm());
+  const [detailsJob, setDetailsJob] = useState(null);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', worker: '', projectId: '' });
@@ -58,20 +69,22 @@ export default function WorkEntriesPage() {
 
   const recalc = async (nextForm) => {
     const workers = nextForm.workers.filter((w) => w.trim());
-    if (!nextForm.project_id || !nextForm.length || !nextForm.width || !nextForm.height || workers.length === 0) {
+    const dimensions = normalizeDimensions(nextForm.dimensions).filter(
+      (line) => parseNumber(line.length) > 0 && parseNumber(line.width) > 0 && parseNumber(line.height) > 0
+    );
+    if (!nextForm.project_id || dimensions.length === 0 || workers.length === 0) {
       return nextForm;
     }
     try {
       const res = await workEntriesApi.preview({
         project_id: nextForm.project_id,
         work_type: nextForm.work_type,
-        length: nextForm.length,
-        width: nextForm.width,
-        height: nextForm.height,
+        dimensions,
         workers,
       });
       return {
         ...nextForm,
+        dimensions: normalizeDimensions(nextForm.dimensions),
         volume: res.data.volume,
         rate: res.data.rate,
         total_salary: res.data.total_salary,
@@ -95,15 +108,30 @@ export default function WorkEntriesPage() {
   };
 
   const openEdit = (job) => {
+    const dimensions =
+      job.dimensions?.length > 0
+        ? job.dimensions.map((line) => ({
+            length: String(line.length ?? ''),
+            width: String(line.width ?? ''),
+            height: String(line.height ?? ''),
+            volume: Number(line.volume) || 0,
+          }))
+        : [
+            {
+              length: String(job.length ?? ''),
+              width: String(job.width ?? ''),
+              height: String(job.height ?? ''),
+              volume: Number(job.volume) || 0,
+            },
+          ];
     setEditing(job);
     setForm({
       entry_date: job.entry_date,
       project_id: String(job.project_id),
       location: job.location || '',
       work_type: job.work_type,
-      length: String(job.length),
-      width: String(job.width),
-      height: String(job.height),
+      remarks: job.remarks || '',
+      dimensions,
       workers: job.workers?.map((w) => w.worker_name) || [''],
       volume: job.volume,
       rate: job.rate,
@@ -115,6 +143,19 @@ export default function WorkEntriesPage() {
 
   const addWorkerField = () => {
     setForm((f) => ({ ...f, workers: [...f.workers, ''] }));
+  };
+
+  const addDimensionField = () => {
+    setForm((f) => ({
+      ...f,
+      dimensions: [...f.dimensions, { length: '', width: '', height: '', volume: 0 }],
+    }));
+  };
+
+  const removeDimensionField = (index) => {
+    const dimensions = form.dimensions.filter((_, i) => i !== index);
+    if (dimensions.length === 0) dimensions.push({ length: '', width: '', height: '', volume: 0 });
+    updateForm({ dimensions: normalizeDimensions(dimensions) });
   };
 
   const removeWorkerField = (index) => {
@@ -130,6 +171,13 @@ export default function WorkEntriesPage() {
       toast.error('Add at least one worker');
       return;
     }
+    const dimensions = normalizeDimensions(form.dimensions).filter(
+      (line) => parseNumber(line.length) > 0 && parseNumber(line.width) > 0 && parseNumber(line.height) > 0
+    );
+    if (dimensions.length === 0) {
+      toast.error('Add at least one valid dimension line');
+      return;
+    }
     setSaving(true);
     try {
       const body = {
@@ -137,9 +185,12 @@ export default function WorkEntriesPage() {
         project_id: Number(form.project_id),
         location: form.location.trim(),
         work_type: form.work_type,
-        length: Number(form.length),
-        width: Number(form.width),
-        height: Number(form.height),
+        remarks: form.remarks?.trim() || '',
+        dimensions: dimensions.map((line) => ({
+          length: Number(line.length),
+          width: Number(line.width),
+          height: Number(line.height),
+        })),
         workers,
       };
       if (editing) {
@@ -191,9 +242,9 @@ export default function WorkEntriesPage() {
     { key: 'location', label: 'Location', render: (r) => r.location || '—' },
     { key: 'work_type', label: 'Type' },
     {
-      key: 'dimensions',
-      label: 'L × W × H',
-      render: (r) => `${r.length} × ${r.width} × ${r.height}`,
+      key: 'dimension_count',
+      label: 'Dimensions',
+      render: (r) => `${r.dimensions?.length || 1} line(s)`,
     },
     { key: 'volume', label: 'Volume', render: (r) => formatNumber(r.volume) },
     { key: 'total_salary', label: 'Total Salary', render: (r) => formatRM(r.total_salary) },
@@ -202,6 +253,19 @@ export default function WorkEntriesPage() {
       label: 'Workers (split)',
       render: (r) =>
         r.workers?.map((w) => `${w.worker_name}: ${formatRM(w.individual_salary)}`).join(', ') || '—',
+    },
+    {
+      key: 'view_details',
+      label: 'Details',
+      render: (r) => (
+        <button
+          type="button"
+          className="text-sm font-medium text-primary-600 hover:text-primary-800"
+          onClick={() => setDetailsJob(r)}
+        >
+          View Details
+        </button>
+      ),
     },
     ...(canWrite
       ? [
@@ -286,7 +350,7 @@ export default function WorkEntriesPage() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-600">
-          One shared job per entry. Volume calculated once; salary split equally among assigned workers.
+          One shared job per entry. Total volume is sum of all dimension lines; salary is split equally among workers.
           Exports use the currently filtered list ({jobs.length} job{jobs.length !== 1 ? 's' : ''}).
         </p>
         <div className="flex flex-wrap gap-2">
@@ -373,43 +437,83 @@ export default function WorkEntriesPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <label className="label-field">Length *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="input-field"
-                required
-                value={form.length}
-                onChange={(e) => updateForm({ length: e.target.value })}
-              />
+          <div className="space-y-3">
+            <div className="mb-2 flex items-center justify-between">
+              <label className="label-field mb-0">Dimension Details *</label>
+              <button type="button" className="text-sm text-primary-600" onClick={addDimensionField}>
+                + Add line
+              </button>
             </div>
-            <div>
-              <label className="label-field">Width *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="input-field"
-                required
-                value={form.width}
-                onChange={(e) => updateForm({ width: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label-field">Height *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="input-field"
-                required
-                value={form.height}
-                onChange={(e) => updateForm({ height: e.target.value })}
-              />
-            </div>
+            {form.dimensions.map((line, i) => (
+              <div key={i} className="grid gap-2 rounded-lg border border-slate-200 p-3 sm:grid-cols-12">
+                <div className="sm:col-span-2">
+                  <label className="label-field">L</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input-field"
+                    value={line.length}
+                    onChange={(e) => {
+                      const dimensions = [...form.dimensions];
+                      dimensions[i] = { ...dimensions[i], length: e.target.value };
+                      updateForm({ dimensions: normalizeDimensions(dimensions) });
+                    }}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label-field">W</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input-field"
+                    value={line.width}
+                    onChange={(e) => {
+                      const dimensions = [...form.dimensions];
+                      dimensions[i] = { ...dimensions[i], width: e.target.value };
+                      updateForm({ dimensions: normalizeDimensions(dimensions) });
+                    }}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label-field">H</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="input-field"
+                    value={line.height}
+                    onChange={(e) => {
+                      const dimensions = [...form.dimensions];
+                      dimensions[i] = { ...dimensions[i], height: e.target.value };
+                      updateForm({ dimensions: normalizeDimensions(dimensions) });
+                    }}
+                  />
+                </div>
+                <div className="sm:col-span-5">
+                  <label className="label-field">Volume</label>
+                  <div className="input-field bg-slate-50">{formatNumber(line.volume || 0)}</div>
+                </div>
+                <div className="flex items-end sm:col-span-1">
+                  {form.dimensions.length > 1 && (
+                    <button type="button" className="btn-secondary w-full" onClick={() => removeDimensionField(i)}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div>
+            <label className="label-field">Job Remarks</label>
+            <input
+              className="input-field"
+              placeholder="Optional"
+              value={form.remarks}
+              onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))}
+            />
           </div>
 
           <div>
@@ -469,6 +573,51 @@ export default function WorkEntriesPage() {
         </form>
       </Modal>
       )}
+
+      <Modal open={!!detailsJob} onClose={() => setDetailsJob(null)} title="Dimension Details" size="lg">
+        {detailsJob && (
+          <div className="space-y-3 text-sm">
+            <p>
+              <strong>Job:</strong> {detailsJob.entry_date} | {detailsJob.project_name} | {detailsJob.work_type}
+            </p>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left">#</th>
+                    <th className="px-3 py-2 text-left">Length</th>
+                    <th className="px-3 py-2 text-left">Width</th>
+                    <th className="px-3 py-2 text-left">Height</th>
+                    <th className="px-3 py-2 text-left">Volume</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(detailsJob.dimensions?.length
+                    ? detailsJob.dimensions
+                    : [{ length: detailsJob.length, width: detailsJob.width, height: detailsJob.height, volume: detailsJob.volume }]
+                  ).map((line, i) => (
+                    <tr key={line.id || i}>
+                      <td className="px-3 py-2">{i + 1}</td>
+                      <td className="px-3 py-2">{formatNumber(line.length)}</td>
+                      <td className="px-3 py-2">{formatNumber(line.width)}</td>
+                      <td className="px-3 py-2">{formatNumber(line.height)}</td>
+                      <td className="px-3 py-2">{formatNumber(line.volume)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-3">
+              <p>
+                <strong>Total Volume:</strong> {formatNumber(detailsJob.volume)}
+              </p>
+              <p>
+                <strong>Total Salary:</strong> {formatRM(detailsJob.total_salary)}
+              </p>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
