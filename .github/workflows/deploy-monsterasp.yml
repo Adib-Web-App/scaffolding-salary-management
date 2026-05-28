@@ -132,18 +132,22 @@ jobs:
           }
 
           $source = Join-Path $PWD "publish"
+          # Entire -dest value must be ONE argument (commas are msdeploy syntax, not PowerShell separators).
+          $destSpec = "contentPath=$site,computerName=$destUrl,userName=$user,password=$pass,authtype=Basic"
+
           # CRITICAL: Never sync wwwroot/data/ — production.db lives only on the host.
           # See PRODUCTION-DEPLOYMENT.md. Do not remove this skip rule.
-          & $msdeploy `
-            -verb:sync `
-            -source:contentPath="$source" `
-            -dest:contentPath="$site",computerName="$destUrl",userName="$user",password="$pass",authtype="Basic" `
-            -allowUntrusted `
-            -disableLink:AppPoolExtension `
-            -disableLink:ContentExtension `
-            -disableLink:CertificateExtension `
-            -skip:objectName=dirPath,absolutePath=.*[\\/]data$ `
-            -verbose
+          & $msdeploy @(
+            '-verb:sync',
+            "-source:contentPath=$source",
+            "-dest:$destSpec",
+            '-allowUntrusted',
+            '-disableLink:AppPoolExtension',
+            '-disableLink:ContentExtension',
+            '-disableLink:CertificateExtension',
+            '-skip:objectName=dirPath,absolutePath=.*[\\/]data$',
+            '-verbose'
+          )
 
           if ($LASTEXITCODE -ne 0) {
             throw "MSDeploy failed with exit code $LASTEXITCODE. Check WebDeploy password in MonsterASP panel (not FTP password)."
