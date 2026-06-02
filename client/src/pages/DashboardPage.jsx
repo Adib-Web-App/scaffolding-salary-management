@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import DataTable from '../components/DataTable';
 import { BRAND } from '../config/branding';
+import DailySalarySummary from '../components/DailySalarySummary';
 import { summaryApi, formatRM, formatNumber } from '../services/api';
 
 function StatCard({ label, value, accent }) {
@@ -158,6 +159,11 @@ export default function DashboardPage() {
             <StatCard label="Total Advance" value={formatRM(data?.totals?.total_advance)} accent="amber" />
             <StatCard label="Net Salary" value={formatRM(data?.totals?.net_salary)} accent="purple" />
           </div>
+
+          <DailySalarySummary
+            dailySalarySummary={data?.dailySalarySummary}
+            loading={loading}
+          />
 
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="card">

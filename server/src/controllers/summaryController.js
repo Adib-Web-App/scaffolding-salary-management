@@ -10,21 +10,23 @@ export async function getDashboardSummary(req, res, next) {
       projectId: req.query.projectId || '',
     };
 
-    const [totals, byWorker, byProject, workers, projects] = await Promise.all([
-      summaryModel.getSummary(filters),
-      summaryModel.getSummaryByWorker({
-        dateFrom: filters.dateFrom,
-        dateTo: filters.dateTo,
-        projectId: filters.projectId,
-      }),
-      summaryModel.getSummaryByProject({
-        dateFrom: filters.dateFrom,
-        dateTo: filters.dateTo,
-        worker: filters.worker,
-      }),
-      summaryModel.getAllWorkers(),
-      projectModel.findAllProjects(),
-    ]);
+    const [totals, byWorker, byProject, workers, projects, dailySalarySummary] =
+      await Promise.all([
+        summaryModel.getSummary(filters),
+        summaryModel.getSummaryByWorker({
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          projectId: filters.projectId,
+        }),
+        summaryModel.getSummaryByProject({
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          worker: filters.worker,
+        }),
+        summaryModel.getAllWorkers(),
+        projectModel.findAllProjects(),
+        summaryModel.getDailySalarySummary(filters),
+      ]);
 
     res.json({
       success: true,
@@ -34,6 +36,7 @@ export async function getDashboardSummary(req, res, next) {
         byProject,
         workers,
         projects,
+        dailySalarySummary,
       },
     });
   } catch (err) {

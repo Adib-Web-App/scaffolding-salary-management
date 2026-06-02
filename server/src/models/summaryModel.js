@@ -170,6 +170,157 @@ export async function getSummaryByProject({ dateFrom = '', dateTo = '', worker =
   return all(sql, params);
 }
 
+function resolveDateRange(dateFrom, dateTo) {
+  if (dateFrom && dateTo) return { dateFrom, dateTo };
+  if (dateFrom) return { dateFrom, dateTo: dateFrom };
+  if (dateTo) return { dateFrom: dateTo, dateTo };
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  return {
+    dateFrom: start.toISOString().slice(0, 10),
+    dateTo: now.toISOString().slice(0, 10),
+  };
+}
+
+function enumerateDates(dateFrom, dateTo) {
+  const dates = [];
+  const cursor = new Date(`${dateFrom}T00:00:00`);
+  const end = new Date(`${dateTo}T00:00:00`);
+  const maxDays = 366;
+  let count = 0;
+  while (cursor <= end && count < maxDays) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+    count += 1;
+  }
+  return dates;
+}
+
+function advanceDateFilter(dateFrom, dateTo, projectId) {
+  let sql = '';
+  const params = [];
+  if (dateFrom) {
+    sql += ` AND a.advance_date >= ?`;
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    sql += ` AND a.advance_date <= ?`;
+    params.push(dateTo);
+  }
+  if (projectId) {
+    sql += ` AND a.project_id = ?`;
+    params.push(projectId);
+  }
+  return { sql, params };
+}
+
+/**
+ * Daily salary matrix: workers × dates with salary, advance, nett per day.
+ */
+export async function getDailySalarySummary({
+  dateFrom = '',
+  dateTo = '',
+  worker = '',
+  projectId = '',
+} = {}) {
+  const range = resolveDateRange(dateFrom, dateTo);
+  const dates = enumerateDates(range.dateFrom, range.dateTo);
+  const { sql: jobSql, params: jobParams } = jobDateFilter('j', range.dateFrom, range.dateTo, projectId);
+
+  let salarySql = `
+    SELECT w.worker_name, j.entry_date AS day,
+           COALESCE(SUM(w.individual_salary), 0) AS daily_salary
+    FROM work_job_workers w
+    JOIN work_jobs j ON j.id = w.job_id
+    WHERE 1=1 ${jobSql}
+  `;
+  const salaryParams = [...jobParams];
+  if (worker) {
+    salarySql += ` AND w.worker_name = ?`;
+    salaryParams.push(worker);
+  }
+  salarySql += ` GROUP BY w.worker_name, j.entry_date`;
+
+  let advanceSql = `
+    SELECT a.worker_name, a.advance_date AS day,
+           COALESCE(SUM(a.amount), 0) AS daily_advance
+    FROM advances a
+    WHERE 1=1
+  `;
+  const { sql: advFilterSql, params: advFilterParams } = advanceDateFilter(
+    range.dateFrom,
+    range.dateTo,
+    projectId
+  );
+  advanceSql += advFilterSql;
+  const advanceParams = [...advFilterParams];
+  if (worker) {
+    advanceSql += ` AND a.worker_name = ?`;
+    advanceParams.push(worker);
+  }
+  advanceSql += ` GROUP BY a.worker_name, a.advance_date`;
+
+  const [salaryRows, advanceRows] = await Promise.all([
+    all(salarySql, salaryParams),
+    all(advanceSql, advanceParams),
+  ]);
+
+  const workerSet = new Set();
+  const salaryMap = {};
+  const advanceMap = {};
+
+  for (const row of salaryRows) {
+    workerSet.add(row.worker_name);
+    const key = `${row.worker_name}|${row.day}`;
+    salaryMap[key] = Number(row.daily_salary) || 0;
+  }
+  for (const row of advanceRows) {
+    workerSet.add(row.worker_name);
+    const key = `${row.worker_name}|${row.day}`;
+    advanceMap[key] = Number(row.daily_advance) || 0;
+  }
+
+  const workers = [...workerSet].sort((a, b) => a.localeCompare(b));
+
+  const rows = workers.map((workerName) => {
+    let totalSalary = 0;
+    let totalAdvance = 0;
+    const daily = {};
+
+    for (const day of dates) {
+      const key = `${workerName}|${day}`;
+      const dailySalary = salaryMap[key] ?? 0;
+      const dailyAdvance = advanceMap[key] ?? 0;
+      const dailyNett = dailySalary - dailyAdvance;
+      const hasActivity = dailySalary !== 0 || dailyAdvance !== 0;
+
+      daily[day] = {
+        salary: dailySalary,
+        advance: dailyAdvance,
+        nett: dailyNett,
+        hasActivity,
+      };
+      totalSalary += dailySalary;
+      totalAdvance += dailyAdvance;
+    }
+
+    return {
+      worker_name: workerName,
+      daily,
+      total_salary: totalSalary,
+      total_advance: totalAdvance,
+      total_nett: totalSalary - totalAdvance,
+    };
+  });
+
+  return {
+    dateFrom: range.dateFrom,
+    dateTo: range.dateTo,
+    dates,
+    rows,
+  };
+}
+
 export async function getAllWorkers() {
   const workWorkers = await all(`SELECT DISTINCT worker_name FROM work_job_workers`);
   const advanceWorkers = await all(`SELECT DISTINCT worker_name FROM advances`);
