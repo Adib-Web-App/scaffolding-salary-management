@@ -224,7 +224,7 @@ export async function getDailySalarySummary({
   projectId = '',
 } = {}) {
   const range = resolveDateRange(dateFrom, dateTo);
-  const dates = enumerateDates(range.dateFrom, range.dateTo);
+  const allDatesInRange = enumerateDates(range.dateFrom, range.dateTo);
   const { sql: jobSql, params: jobParams } = jobDateFilter('j', range.dateFrom, range.dateTo, projectId);
 
   let salarySql = `
@@ -266,25 +266,37 @@ export async function getDailySalarySummary({
   ]);
 
   const workerSet = new Set();
+  const activeDateSet = new Set();
   const salaryMap = {};
   const advanceMap = {};
 
   for (const row of salaryRows) {
-    workerSet.add(row.worker_name);
+    const value = Number(row.daily_salary) || 0;
+    if (value !== 0) {
+      workerSet.add(row.worker_name);
+      activeDateSet.add(row.day);
+    }
     const key = `${row.worker_name}|${row.day}`;
-    salaryMap[key] = Number(row.daily_salary) || 0;
+    salaryMap[key] = value;
   }
   for (const row of advanceRows) {
-    workerSet.add(row.worker_name);
+    const value = Number(row.daily_advance) || 0;
+    if (value !== 0) {
+      workerSet.add(row.worker_name);
+      activeDateSet.add(row.day);
+    }
     const key = `${row.worker_name}|${row.day}`;
-    advanceMap[key] = Number(row.daily_advance) || 0;
+    advanceMap[key] = value;
   }
 
+  const dates = allDatesInRange.filter((day) => activeDateSet.has(day));
   const workers = [...workerSet].sort((a, b) => a.localeCompare(b));
 
-  const rows = workers.map((workerName) => {
+  const rows = workers
+    .map((workerName) => {
     let totalSalary = 0;
     let totalAdvance = 0;
+    let hasAnyActivity = false;
     const daily = {};
 
     for (const day of dates) {
@@ -293,6 +305,7 @@ export async function getDailySalarySummary({
       const dailyAdvance = advanceMap[key] ?? 0;
       const dailyNett = dailySalary - dailyAdvance;
       const hasActivity = dailySalary !== 0 || dailyAdvance !== 0;
+      hasAnyActivity = hasAnyActivity || hasActivity;
 
       daily[day] = {
         salary: dailySalary,
@@ -310,8 +323,10 @@ export async function getDailySalarySummary({
       total_salary: totalSalary,
       total_advance: totalAdvance,
       total_nett: totalSalary - totalAdvance,
+      has_any_activity: hasAnyActivity,
     };
-  });
+    })
+    .filter((row) => row.has_any_activity);
 
   return {
     dateFrom: range.dateFrom,
