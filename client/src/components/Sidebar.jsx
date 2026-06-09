@@ -12,13 +12,44 @@ const navItems = [
   { to: '/payroll', label: 'Payroll & Payslip', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
 ];
 
+const usersNavItem = {
+  to: '/users',
+  label: 'Users',
+  icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
+};
+
 const roleBadgeClass = {
   ADMIN: 'bg-primary-100 text-primary-800',
   SUPERVISOR: 'bg-amber-100 text-amber-800',
   VIEWER: 'bg-slate-100 text-slate-700',
 };
 
-export default function Sidebar({ open, onClose }) {
+function NavItem({ to, label, icon, end, collapsed, onNavigate }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={onNavigate}
+      title={collapsed ? label : undefined}
+      className={({ isActive }) =>
+        [
+          'flex items-center rounded-lg text-sm font-medium transition',
+          collapsed ? 'lg:justify-center lg:px-2 lg:py-2.5' : 'gap-3 px-3 py-2.5',
+          isActive
+            ? 'bg-primary-50 text-primary-700'
+            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+        ].join(' ')
+      }
+    >
+      <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={icon} />
+      </svg>
+      <span className={collapsed ? 'lg:hidden' : ''}>{label}</span>
+    </NavLink>
+  );
+}
+
+export default function Sidebar({ collapsed, mobileOpen, onClose }) {
   const { user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
   const showUsers = hasPermission('users:read');
@@ -28,71 +59,71 @@ export default function Sidebar({ open, onClose }) {
     navigate('/login');
   };
 
+  const handleNavClick = () => {
+    onClose();
+  };
+
   return (
     <>
-      {open && (
+      {mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/50 transition-opacity duration-300 lg:hidden"
           onClick={onClose}
           aria-hidden="true"
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:static lg:translate-x-0 ${
-          open ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={[
+          'fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white',
+          'transition-all duration-300 ease-in-out',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          'lg:static lg:translate-x-0',
+          collapsed ? 'lg:w-[72px]' : 'lg:w-64',
+        ].join(' ')}
       >
-        <div className="border-b border-slate-200 px-4 py-4">
-          <AppBranding variant="sidebar" />
+        <div
+          className={[
+            'shrink-0 border-b border-slate-200 py-4 transition-all duration-300',
+            collapsed ? 'px-4 lg:px-2' : 'px-4',
+          ].join(' ')}
+        >
+          <AppBranding variant="sidebar" compact={collapsed} />
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+        <nav
+          className={[
+            'flex-1 space-y-1 overflow-y-auto transition-all duration-300',
+            collapsed ? 'p-4 lg:p-2' : 'p-4',
+          ].join(' ')}
+        >
           {navItems.map((item) => (
-            <NavLink
+            <NavItem
               key={item.to}
               to={item.to}
+              label={item.label}
+              icon={item.icon}
               end={item.to === '/'}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-primary-50 text-primary-700'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`
-              }
-            >
-              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={item.icon} />
-              </svg>
-              {item.label}
-            </NavLink>
+              collapsed={collapsed}
+              onNavigate={handleNavClick}
+            />
           ))}
           {showUsers && (
-            <NavLink
-              to="/users"
-              onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                  isActive
-                    ? 'bg-primary-50 text-primary-700'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`
-              }
-            >
-              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                />
-              </svg>
-              Users
-            </NavLink>
+            <NavItem
+              to={usersNavItem.to}
+              label={usersNavItem.label}
+              icon={usersNavItem.icon}
+              collapsed={collapsed}
+              onNavigate={handleNavClick}
+            />
           )}
         </nav>
-        <div className="border-t border-slate-200 p-4">
+        <div
+          className={[
+            'shrink-0 border-t border-slate-200 transition-all duration-300',
+            collapsed ? 'p-4 lg:p-2' : 'p-4',
+          ].join(' ')}
+        >
           {user && (
-            <div className="mb-3 rounded-lg bg-slate-50 p-3">
+            <div className={`mb-3 rounded-lg bg-slate-50 p-3 ${collapsed ? 'lg:hidden' : ''}`}>
               <p className="truncate text-sm font-medium text-slate-900">{user.username}</p>
               <span
                 className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${roleBadgeClass[user.role] || roleBadgeClass.VIEWER}`}
@@ -104,9 +135,13 @@ export default function Sidebar({ open, onClose }) {
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            title={collapsed ? 'Logout' : undefined}
+            className={[
+              'flex w-full items-center rounded-lg border border-slate-200 text-sm font-medium text-slate-700 transition hover:bg-slate-50',
+              collapsed ? 'justify-center gap-2 px-3 py-2 lg:px-2' : 'justify-center gap-2 px-3 py-2',
+            ].join(' ')}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -114,7 +149,7 @@ export default function Sidebar({ open, onClose }) {
                 d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
               />
             </svg>
-            Logout
+            <span className={collapsed ? 'lg:hidden' : ''}>Logout</span>
           </button>
         </div>
       </aside>

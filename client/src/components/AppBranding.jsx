@@ -5,7 +5,7 @@ import BrandIcon from './BrandIcon';
  * @param {'login' | 'sidebar' | 'header' | 'loading'} variant
  * @param {string} [pageTitle] - used with header variant
  */
-export default function AppBranding({ variant = 'sidebar', pageTitle }) {
+export default function AppBranding({ variant = 'sidebar', pageTitle, compact = false }) {
   if (variant === 'login') {
     return (
       <div className="text-center">
@@ -21,11 +21,14 @@ export default function AppBranding({ variant = 'sidebar', pageTitle }) {
 
   if (variant === 'sidebar') {
     return (
-      <div className="flex items-center gap-3">
+      <div
+        className={`flex items-center gap-3 ${compact ? 'lg:justify-center' : ''}`}
+        title={compact ? BRAND.company : undefined}
+      >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-gradient-to-br from-slate-800 to-slate-900 text-amber-500 shadow-sm">
           <BrandIcon className="h-5 w-5" strokeWidth={1.5} />
         </div>
-        <div className="min-w-0">
+        <div className={`min-w-0 overflow-hidden transition-opacity duration-300 ${compact ? 'lg:hidden' : ''}`}>
           <p className="text-xs font-extrabold leading-tight tracking-tight text-slate-900">{BRAND.company}</p>
           <p className="text-[10px] font-medium leading-tight text-slate-500">{BRAND.app}</p>
         </div>
