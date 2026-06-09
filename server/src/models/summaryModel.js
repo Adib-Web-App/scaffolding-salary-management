@@ -336,6 +336,80 @@ export async function getDailySalarySummary({
   };
 }
 
+/**
+ * Advance-only matrix: workers × dates with advance amounts per day.
+ */
+export async function getAdvanceSummary({
+  dateFrom = '',
+  dateTo = '',
+  worker = '',
+  projectId = '',
+} = {}) {
+  const range = resolveDateRange(dateFrom, dateTo);
+  const allDatesInRange = enumerateDates(range.dateFrom, range.dateTo);
+
+  let advanceSql = `
+    SELECT a.worker_name, a.advance_date AS day,
+           COALESCE(SUM(a.amount), 0) AS daily_advance
+    FROM advances a
+    WHERE 1=1
+  `;
+  const { sql: advFilterSql, params: advanceParams } = advanceDateFilter(
+    range.dateFrom,
+    range.dateTo,
+    projectId
+  );
+  advanceSql += advFilterSql;
+  if (worker) {
+    advanceSql += ` AND a.worker_name = ?`;
+    advanceParams.push(worker);
+  }
+  advanceSql += ` GROUP BY a.worker_name, a.advance_date`;
+
+  const advanceRows = await all(advanceSql, advanceParams);
+
+  const workerSet = new Set();
+  const activeDateSet = new Set();
+  const advanceMap = {};
+
+  for (const row of advanceRows) {
+    const value = Number(row.daily_advance) || 0;
+    if (value !== 0) {
+      workerSet.add(row.worker_name);
+      activeDateSet.add(row.day);
+      advanceMap[`${row.worker_name}|${row.day}`] = value;
+    }
+  }
+
+  const dates = allDatesInRange.filter((day) => activeDateSet.has(day));
+  const workers = [...workerSet].sort((a, b) => a.localeCompare(b));
+
+  const rows = workers.map((workerName) => {
+    let totalAdvance = 0;
+    const daily = {};
+
+    for (const day of dates) {
+      const dailyAdvance = advanceMap[`${workerName}|${day}`] ?? 0;
+      const hasActivity = dailyAdvance !== 0;
+      daily[day] = { advance: dailyAdvance, hasActivity };
+      totalAdvance += dailyAdvance;
+    }
+
+    return {
+      worker_name: workerName,
+      daily,
+      total_advance: totalAdvance,
+    };
+  });
+
+  return {
+    dateFrom: range.dateFrom,
+    dateTo: range.dateTo,
+    dates,
+    rows,
+  };
+}
+
 export async function getAllWorkers() {
   const workWorkers = await all(`SELECT DISTINCT worker_name FROM work_job_workers`);
   const advanceWorkers = await all(`SELECT DISTINCT worker_name FROM advances`);

@@ -10,7 +10,7 @@ export async function getDashboardSummary(req, res, next) {
       projectId: req.query.projectId || '',
     };
 
-    const [totals, byWorker, byProject, workers, projects, dailySalarySummary] =
+    const [totals, byWorker, byProject, workers, projects, dailySalarySummary, advanceSummary] =
       await Promise.all([
         summaryModel.getSummary(filters),
         summaryModel.getSummaryByWorker({
@@ -26,6 +26,7 @@ export async function getDashboardSummary(req, res, next) {
         summaryModel.getAllWorkers(),
         projectModel.findAllProjects(),
         summaryModel.getDailySalarySummary(filters),
+        summaryModel.getAdvanceSummary(filters),
       ]);
 
     res.json({
@@ -37,6 +38,7 @@ export async function getDashboardSummary(req, res, next) {
         workers,
         projects,
         dailySalarySummary,
+        advanceSummary,
       },
     });
   } catch (err) {

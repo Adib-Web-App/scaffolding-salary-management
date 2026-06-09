@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import DataTable from '../components/DataTable';
 import { BRAND } from '../config/branding';
+import AdvanceSummary from '../components/AdvanceSummary';
 import DailySalarySummary from '../components/DailySalarySummary';
 import { summaryApi, formatRM, formatNumber } from '../services/api';
 
@@ -164,6 +165,8 @@ export default function DashboardPage() {
             dailySalarySummary={data?.dailySalarySummary}
             loading={loading}
           />
+
+          <AdvanceSummary advanceSummary={data?.advanceSummary} loading={loading} />
 
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="card">
