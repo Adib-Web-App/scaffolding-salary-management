@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { formatDateColumnLabel } from './exportDailySalarySummaryExcel.js';
+import { formatDateColumnLabel, todayYMD } from './dateUtils.js';
 
 const RM_FORMAT = '"RM"#,##0.00';
 
@@ -83,7 +83,7 @@ export async function exportAdvanceSummaryToExcel(advanceSummary) {
   autoFitColumns(sheet);
 
   const rangeLabel =
-    dateFrom && dateTo ? `${dateFrom}_to_${dateTo}` : new Date().toISOString().slice(0, 10);
+    dateFrom && dateTo ? `${dateFrom}_to_${dateTo}` : todayYMD();
   const filename = `advance-summary-${rangeLabel}.xlsx`;
 
   const buffer = await workbook.xlsx.writeBuffer();

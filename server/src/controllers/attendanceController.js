@@ -1,11 +1,11 @@
 import * as attendanceModel from '../models/attendanceModel.js';
+import { pickDateQueryFilters } from '../utils/dateUtils.js';
 
 export async function listAttendance(req, res, next) {
   try {
     const data = await attendanceModel.findAllAttendance({
       search: req.query.search || '',
-      dateFrom: req.query.dateFrom || '',
-      dateTo: req.query.dateTo || '',
+      ...pickDateQueryFilters(req.query),
       worker: req.query.worker || '',
       projectId: req.query.projectId || '',
       month: req.query.month || '',
@@ -83,10 +83,7 @@ export async function deleteAttendance(req, res, next) {
 export async function workerHistory(req, res, next) {
   try {
     const worker = req.params.worker;
-    const data = await attendanceModel.getWorkerHistory(worker, {
-      dateFrom: req.query.dateFrom || '',
-      dateTo: req.query.dateTo || '',
-    });
+    const data = await attendanceModel.getWorkerHistory(worker, pickDateQueryFilters(req.query));
     res.json({ success: true, data });
   } catch (err) {
     next(err);

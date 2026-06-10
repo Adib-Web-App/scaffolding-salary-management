@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { todayYMD } from './dateUtils.js';
 
 const RM_FORMAT = '"RM"#,##0.00';
 
@@ -177,7 +178,7 @@ export async function exportAdvancesToExcel(advances) {
     };
   }
 
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = todayYMD();
   const filename = `advance-payments-${dateStr}.xlsx`;
 
   const buffer = await workbook.xlsx.writeBuffer();

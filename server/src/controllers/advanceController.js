@@ -1,11 +1,11 @@
 import * as advanceModel from '../models/advanceModel.js';
+import { pickDateQueryFilters } from '../utils/dateUtils.js';
 
 export async function listAdvances(req, res, next) {
   try {
     const advances = await advanceModel.findAllAdvances({
       search: req.query.search || '',
-      dateFrom: req.query.dateFrom || '',
-      dateTo: req.query.dateTo || '',
+      ...pickDateQueryFilters(req.query),
       worker: req.query.worker || '',
       projectId: req.query.projectId || '',
     });

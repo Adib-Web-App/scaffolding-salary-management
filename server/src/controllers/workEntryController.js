@@ -1,6 +1,7 @@
 import * as workJobModel from '../models/workJobModel.js';
 import * as projectModel from '../models/projectModel.js';
 import * as salaryService from '../services/salaryService.js';
+import { pickDateQueryFilters } from '../utils/dateUtils.js';
 
 async function buildJobPayload(body) {
   const { entry_date, project_id, work_type, workers } = body;
@@ -66,8 +67,7 @@ export async function listWorkEntries(req, res, next) {
   try {
     const jobs = await workJobModel.findAllWorkJobs({
       search: req.query.search || '',
-      dateFrom: req.query.dateFrom || '',
-      dateTo: req.query.dateTo || '',
+      ...pickDateQueryFilters(req.query),
       worker: req.query.worker || '',
       projectId: req.query.projectId || '',
     });

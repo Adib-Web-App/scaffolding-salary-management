@@ -5,9 +5,10 @@ import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import { useAuth } from '../context/AuthContext';
 import { attendanceApi, projectsApi } from '../services/api';
+import { currentMonthYM, todayYMD } from '../utils/dateUtils';
 
 const emptyForm = () => ({
-  attendance_date: new Date().toISOString().slice(0, 10),
+  attendance_date: todayYMD(),
   worker_name: '',
   status: 'present',
   project_id: '',
@@ -25,7 +26,7 @@ export default function AttendancePage() {
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
   const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', worker: '' });
-  const [summaryMonth, setSummaryMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [summaryMonth, setSummaryMonth] = useState(currentMonthYM());
   const [historyWorker, setHistoryWorker] = useState('');
   const [history, setHistory] = useState([]);
 

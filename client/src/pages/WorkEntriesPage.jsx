@@ -6,9 +6,10 @@ import Modal from '../components/Modal';
 import { useAuth } from '../context/AuthContext';
 import { projectsApi, workEntriesApi, formatRM, formatNumber } from '../services/api';
 import { exportWorkEntriesToExcel } from '../utils/exportWorkEntriesExcel';
+import { todayYMD } from '../utils/dateUtils';
 
 const emptyForm = () => ({
-  entry_date: new Date().toISOString().slice(0, 10),
+  entry_date: todayYMD(),
   project_id: '',
   location: '',
   work_type: 'Erection',

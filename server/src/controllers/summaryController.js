@@ -1,11 +1,11 @@
 import * as summaryModel from '../models/summaryModel.js';
 import * as projectModel from '../models/projectModel.js';
+import { pickDateQueryFilters } from '../utils/dateUtils.js';
 
 export async function getDashboardSummary(req, res, next) {
   try {
     const filters = {
-      dateFrom: req.query.dateFrom || '',
-      dateTo: req.query.dateTo || '',
+      ...pickDateQueryFilters(req.query),
       worker: req.query.worker || '',
       projectId: req.query.projectId || '',
     };

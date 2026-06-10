@@ -6,10 +6,11 @@ import Modal from '../components/Modal';
 import { useAuth } from '../context/AuthContext';
 import { advancesApi, projectsApi, formatRM } from '../services/api';
 import { exportAdvancesToExcel } from '../utils/exportAdvancesExcel';
+import { todayYMD } from '../utils/dateUtils';
 
 const emptyForm = {
   worker_name: '',
-  advance_date: new Date().toISOString().slice(0, 10),
+  advance_date: todayYMD(),
   amount: '',
   remarks: '',
   project_id: '',

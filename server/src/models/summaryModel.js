@@ -1,4 +1,9 @@
 import { all, get } from '../db/database.js';
+import {
+  enumerateDates,
+  normalizeDateYMD,
+  resolveDateRange,
+} from '../utils/dateUtils.js';
 
 function jobDateFilter(alias, dateFrom, dateTo, projectId) {
   let sql = '';
@@ -170,32 +175,6 @@ export async function getSummaryByProject({ dateFrom = '', dateTo = '', worker =
   return all(sql, params);
 }
 
-function resolveDateRange(dateFrom, dateTo) {
-  if (dateFrom && dateTo) return { dateFrom, dateTo };
-  if (dateFrom) return { dateFrom, dateTo: dateFrom };
-  if (dateTo) return { dateFrom: dateTo, dateTo };
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  return {
-    dateFrom: start.toISOString().slice(0, 10),
-    dateTo: now.toISOString().slice(0, 10),
-  };
-}
-
-function enumerateDates(dateFrom, dateTo) {
-  const dates = [];
-  const cursor = new Date(`${dateFrom}T00:00:00`);
-  const end = new Date(`${dateTo}T00:00:00`);
-  const maxDays = 366;
-  let count = 0;
-  while (cursor <= end && count < maxDays) {
-    dates.push(cursor.toISOString().slice(0, 10));
-    cursor.setDate(cursor.getDate() + 1);
-    count += 1;
-  }
-  return dates;
-}
-
 function advanceDateFilter(dateFrom, dateTo, projectId) {
   let sql = '';
   const params = [];
@@ -272,20 +251,22 @@ export async function getDailySalarySummary({
 
   for (const row of salaryRows) {
     const value = Number(row.daily_salary) || 0;
+    const day = normalizeDateYMD(row.day);
     if (value !== 0) {
       workerSet.add(row.worker_name);
-      activeDateSet.add(row.day);
+      activeDateSet.add(day);
     }
-    const key = `${row.worker_name}|${row.day}`;
+    const key = `${row.worker_name}|${day}`;
     salaryMap[key] = value;
   }
   for (const row of advanceRows) {
     const value = Number(row.daily_advance) || 0;
+    const day = normalizeDateYMD(row.day);
     if (value !== 0) {
       workerSet.add(row.worker_name);
-      activeDateSet.add(row.day);
+      activeDateSet.add(day);
     }
-    const key = `${row.worker_name}|${row.day}`;
+    const key = `${row.worker_name}|${day}`;
     advanceMap[key] = value;
   }
 
@@ -374,10 +355,11 @@ export async function getAdvanceSummary({
 
   for (const row of advanceRows) {
     const value = Number(row.daily_advance) || 0;
+    const day = normalizeDateYMD(row.day);
     if (value !== 0) {
       workerSet.add(row.worker_name);
-      activeDateSet.add(row.day);
-      advanceMap[`${row.worker_name}|${row.day}`] = value;
+      activeDateSet.add(day);
+      advanceMap[`${row.worker_name}|${day}`] = value;
     }
   }
 

@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { todayYMD } from './dateUtils.js';
 
 const RM_FORMAT = '"RM"#,##0.00';
 const NUMBER_FORMAT = '#,##0.00';
@@ -323,7 +324,7 @@ export async function exportWorkEntriesToExcel(jobs) {
     };
   }
 
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const dateStr = todayYMD();
   const filename = `daily-work-entry-${dateStr}.xlsx`;
 
   const buffer = await workbook.xlsx.writeBuffer();

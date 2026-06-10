@@ -1,4 +1,7 @@
 import ExcelJS from 'exceljs';
+import { formatDateColumnLabel, todayYMD } from './dateUtils.js';
+
+export { formatDateColumnLabel };
 
 const RM_FORMAT = '"RM"#,##0.00';
 
@@ -8,14 +11,6 @@ const BORDER_STYLE = {
   bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
   right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
 };
-
-export function formatDateColumnLabel(isoDate) {
-  const d = new Date(`${isoDate}T00:00:00`);
-  const day = d.getDate();
-  const month = d.toLocaleString('en-GB', { month: 'short' });
-  const year = String(d.getFullYear()).slice(-2);
-  return `${day}-${month}-${year}`;
-}
 
 function autoFitColumns(worksheet) {
   worksheet.columns.forEach((column) => {
@@ -98,7 +93,7 @@ export async function exportDailySalarySummaryToExcel(dailySalarySummary) {
   autoFitColumns(sheet);
 
   const rangeLabel =
-    dateFrom && dateTo ? `${dateFrom}_to_${dateTo}` : new Date().toISOString().slice(0, 10);
+    dateFrom && dateTo ? `${dateFrom}_to_${dateTo}` : todayYMD();
   const filename = `daily-salary-summary-${rangeLabel}.xlsx`;
 
   const buffer = await workbook.xlsx.writeBuffer();

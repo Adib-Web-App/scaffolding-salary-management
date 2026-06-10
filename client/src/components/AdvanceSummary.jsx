@@ -2,7 +2,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { formatRM } from '../services/api';
 import { exportAdvanceSummaryToExcel } from '../utils/exportAdvanceSummaryExcel.js';
-import { formatDateColumnLabel } from '../utils/exportDailySalarySummaryExcel.js';
+import { formatDateColumnLabel } from '../utils/dateUtils.js';
 
 function formatAdvanceCell(cell) {
   if (!cell?.hasActivity) return '—';
