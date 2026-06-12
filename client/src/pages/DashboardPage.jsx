@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import DataTable from '../components/DataTable';
+import WorkerMultiSelect from '../components/WorkerMultiSelect';
 import { BRAND } from '../config/branding';
 import AdvanceSummary from '../components/AdvanceSummary';
 import DailySalarySummary from '../components/DailySalarySummary';
+import { useDashboardWorkerFilter } from '../hooks/useDashboardWorkerFilter';
 import { summaryApi, formatRM, formatNumber } from '../services/api';
 
 function StatCard({ label, value, accent }) {
@@ -26,24 +28,33 @@ function StatCard({ label, value, accent }) {
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const {
+    selectedWorkers,
+    appliedWorkers,
+    setSelectedWorkers,
+    applySelectedWorkers,
+    clearSelectedWorkers,
+  } = useDashboardWorkerFilter();
   const [filters, setFilters] = useState({
     dateFrom: '',
     dateTo: '',
-    worker: '',
     projectId: '',
   });
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await summaryApi.get(filters);
+      const res = await summaryApi.get({
+        ...filters,
+        workers: appliedWorkers,
+      });
       setData(res.data);
     } catch (err) {
       toast.error(err.message);
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, appliedWorkers]);
 
   useEffect(() => {
     loadSummary();
@@ -64,6 +75,15 @@ export default function DashboardPage() {
     { key: 'dismantle_volume', label: 'Dismantle Vol.', render: (r) => formatNumber(r.dismantle_volume) },
     { key: 'total_salary', label: 'Total Salary', render: (r) => formatRM(r.total_salary) },
   ];
+
+  const handleApply = () => {
+    applySelectedWorkers();
+  };
+
+  const handleClearFilters = () => {
+    setFilters({ dateFrom: '', dateTo: '', projectId: '' });
+    clearSelectedWorkers();
+  };
 
   return (
     <div className="space-y-6">
@@ -94,21 +114,12 @@ export default function DashboardPage() {
               onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))}
             />
           </div>
-          <div>
-            <label className="label-field">Worker</label>
-            <select
-              className="input-field"
-              value={filters.worker}
-              onChange={(e) => setFilters((f) => ({ ...f, worker: e.target.value }))}
-            >
-              <option value="">All Workers</option>
-              {(data?.workers || []).map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
-              ))}
-            </select>
-          </div>
+          <WorkerMultiSelect
+            workers={data?.workers || []}
+            selected={selectedWorkers}
+            onChange={setSelectedWorkers}
+            disabled={loading && !data?.workers?.length}
+          />
           <div>
             <label className="label-field">Project</label>
             <select
@@ -125,16 +136,10 @@ export default function DashboardPage() {
             </select>
           </div>
           <div className="flex items-end gap-2">
-            <button type="button" className="btn-primary w-full" onClick={loadSummary}>
+            <button type="button" className="btn-primary w-full" onClick={handleApply}>
               Apply
             </button>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() =>
-                setFilters({ dateFrom: '', dateTo: '', worker: '', projectId: '' })
-              }
-            >
+            <button type="button" className="btn-secondary" onClick={handleClearFilters}>
               Clear
             </button>
           </div>

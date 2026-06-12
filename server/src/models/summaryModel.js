@@ -4,6 +4,7 @@ import {
   normalizeDateYMD,
   resolveDateRange,
 } from '../utils/dateUtils.js';
+import { jobWorkersInClause, workersInClause } from '../utils/queryUtils.js';
 
 function jobDateFilter(alias, dateFrom, dateTo, projectId) {
   let sql = '';
@@ -23,27 +24,26 @@ function jobDateFilter(alias, dateFrom, dateTo, projectId) {
   return { sql, params };
 }
 
-export async function getSummary({ dateFrom = '', dateTo = '', worker = '', projectId = '' } = {}) {
+export async function getSummary({ dateFrom = '', dateTo = '', workers = [], projectId = '' } = {}) {
   const { sql: dateSql, params: dateParams } = jobDateFilter('j', dateFrom, dateTo, projectId);
+  const { sql: jobWorkerSql, params: jobWorkerParams } = jobWorkersInClause(workers);
+  const { sql: workerNameSql, params: workerNameParams } = workersInClause('w.worker_name', workers);
+  const { sql: advanceWorkerSql, params: advanceWorkerParams } = workersInClause(
+    'worker_name',
+    workers
+  );
 
   let erectionSql = `
     SELECT COALESCE(SUM(j.volume), 0) as vol
-    FROM work_jobs j WHERE j.work_type = 'Erection' ${dateSql}
+    FROM work_jobs j WHERE j.work_type = 'Erection' ${dateSql}${jobWorkerSql}
   `;
   let dismantleSql = `
     SELECT COALESCE(SUM(j.volume), 0) as vol
-    FROM work_jobs j WHERE j.work_type = 'Dismantle' ${dateSql}
+    FROM work_jobs j WHERE j.work_type = 'Dismantle' ${dateSql}${jobWorkerSql}
   `;
 
-  const erectionParams = [...dateParams];
-  const dismantleParams = [...dateParams];
-
-  if (worker) {
-    erectionSql += ` AND j.id IN (SELECT job_id FROM work_job_workers WHERE worker_name = ?)`;
-    dismantleSql += ` AND j.id IN (SELECT job_id FROM work_job_workers WHERE worker_name = ?)`;
-    erectionParams.push(worker);
-    dismantleParams.push(worker);
-  }
+  const erectionParams = [...dateParams, ...jobWorkerParams];
+  const dismantleParams = [...dateParams, ...jobWorkerParams];
 
   const erectionRow = await get(erectionSql, erectionParams);
   const dismantleRow = await get(dismantleSql, dismantleParams);
@@ -52,13 +52,9 @@ export async function getSummary({ dateFrom = '', dateTo = '', worker = '', proj
     SELECT COALESCE(SUM(w.individual_salary), 0) as total_salary
     FROM work_job_workers w
     JOIN work_jobs j ON j.id = w.job_id
-    WHERE 1=1 ${dateSql.replace(/j\./g, 'j.')}
+    WHERE 1=1 ${dateSql}${workerNameSql}
   `;
-  const salaryParams = [...dateParams];
-  if (worker) {
-    salarySql += ` AND w.worker_name = ?`;
-    salaryParams.push(worker);
-  }
+  const salaryParams = [...dateParams, ...workerNameParams];
 
   const salaryRow = await get(salarySql, salaryParams);
 
@@ -72,10 +68,8 @@ export async function getSummary({ dateFrom = '', dateTo = '', worker = '', proj
     advanceSql += ` AND advance_date <= ?`;
     advanceParams.push(dateTo);
   }
-  if (worker) {
-    advanceSql += ` AND worker_name = ?`;
-    advanceParams.push(worker);
-  }
+  advanceSql += advanceWorkerSql;
+  advanceParams.push(...advanceWorkerParams);
 
   const advanceRow = await get(advanceSql, advanceParams);
   const totalSalary = salaryRow?.total_salary || 0;
@@ -90,8 +84,18 @@ export async function getSummary({ dateFrom = '', dateTo = '', worker = '', proj
   };
 }
 
-export async function getSummaryByWorker({ dateFrom = '', dateTo = '', projectId = '' } = {}) {
+export async function getSummaryByWorker({
+  dateFrom = '',
+  dateTo = '',
+  projectId = '',
+  workers = [],
+} = {}) {
   const { sql: dateSql, params: dateParams } = jobDateFilter('j', dateFrom, dateTo, projectId);
+  const { sql: workerNameSql, params: workerNameParams } = workersInClause('w.worker_name', workers);
+  const { sql: advanceWorkerSql, params: advanceWorkerParams } = workersInClause(
+    'worker_name',
+    workers
+  );
 
   let sql = `
     SELECT
@@ -101,12 +105,12 @@ export async function getSummaryByWorker({ dateFrom = '', dateTo = '', projectId
       COALESCE(SUM(w.individual_salary), 0) as total_salary
     FROM work_job_workers w
     JOIN work_jobs j ON j.id = w.job_id
-    WHERE 1=1 ${dateSql}
+    WHERE 1=1 ${dateSql}${workerNameSql}
     GROUP BY w.worker_name
     ORDER BY total_salary DESC
   `;
 
-  const workRows = await all(sql, dateParams);
+  const workRows = await all(sql, [...dateParams, ...workerNameParams]);
 
   let advanceSql = `SELECT worker_name, COALESCE(SUM(amount), 0) as total_advance FROM advances WHERE 1=1`;
   const advanceParams = [];
@@ -118,6 +122,8 @@ export async function getSummaryByWorker({ dateFrom = '', dateTo = '', projectId
     advanceSql += ` AND advance_date <= ?`;
     advanceParams.push(dateTo);
   }
+  advanceSql += advanceWorkerSql;
+  advanceParams.push(...advanceWorkerParams);
   advanceSql += ` GROUP BY worker_name`;
   const advanceRows = await all(advanceSql, advanceParams);
   const advanceMap = Object.fromEntries(advanceRows.map((r) => [r.worker_name, r.total_advance]));
@@ -144,7 +150,7 @@ export async function getSummaryByWorker({ dateFrom = '', dateTo = '', projectId
     .sort((a, b) => b.total_salary - a.total_salary);
 }
 
-export async function getSummaryByProject({ dateFrom = '', dateTo = '', worker = '' } = {}) {
+export async function getSummaryByProject({ dateFrom = '', dateTo = '', workers = [] } = {}) {
   let sql = `
     SELECT
       p.id as project_id,
@@ -166,10 +172,9 @@ export async function getSummaryByProject({ dateFrom = '', dateTo = '', worker =
     sql += ` AND j.entry_date <= ?`;
     params.push(dateTo);
   }
-  if (worker) {
-    sql += ` AND j.id IN (SELECT job_id FROM work_job_workers WHERE worker_name = ?)`;
-    params.push(worker);
-  }
+  const { sql: jobWorkerSql, params: jobWorkerParams } = jobWorkersInClause(workers);
+  sql += jobWorkerSql;
+  params.push(...jobWorkerParams);
 
   sql += ` GROUP BY p.id, p.project_name ORDER BY p.project_name`;
   return all(sql, params);
@@ -199,7 +204,7 @@ function advanceDateFilter(dateFrom, dateTo, projectId) {
 export async function getDailySalarySummary({
   dateFrom = '',
   dateTo = '',
-  worker = '',
+  workers = [],
   projectId = '',
 } = {}) {
   const range = resolveDateRange(dateFrom, dateTo);
@@ -213,11 +218,9 @@ export async function getDailySalarySummary({
     JOIN work_jobs j ON j.id = w.job_id
     WHERE 1=1 ${jobSql}
   `;
-  const salaryParams = [...jobParams];
-  if (worker) {
-    salarySql += ` AND w.worker_name = ?`;
-    salaryParams.push(worker);
-  }
+  const { sql: workerNameSql, params: workerNameParams } = workersInClause('w.worker_name', workers);
+  const salaryParams = [...jobParams, ...workerNameParams];
+  salarySql += workerNameSql;
   salarySql += ` GROUP BY w.worker_name, j.entry_date`;
 
   let advanceSql = `
@@ -232,11 +235,12 @@ export async function getDailySalarySummary({
     projectId
   );
   advanceSql += advFilterSql;
-  const advanceParams = [...advFilterParams];
-  if (worker) {
-    advanceSql += ` AND a.worker_name = ?`;
-    advanceParams.push(worker);
-  }
+  const { sql: advanceWorkerSql, params: advanceWorkerParams } = workersInClause(
+    'a.worker_name',
+    workers
+  );
+  const advanceParams = [...advFilterParams, ...advanceWorkerParams];
+  advanceSql += advanceWorkerSql;
   advanceSql += ` GROUP BY a.worker_name, a.advance_date`;
 
   const [salaryRows, advanceRows] = await Promise.all([
@@ -271,9 +275,9 @@ export async function getDailySalarySummary({
   }
 
   const dates = allDatesInRange.filter((day) => activeDateSet.has(day));
-  const workers = [...workerSet].sort((a, b) => a.localeCompare(b));
+  const workerNames = [...workerSet].sort((a, b) => a.localeCompare(b));
 
-  const rows = workers
+  const rows = workerNames
     .map((workerName) => {
     let totalSalary = 0;
     let totalAdvance = 0;
@@ -323,7 +327,7 @@ export async function getDailySalarySummary({
 export async function getAdvanceSummary({
   dateFrom = '',
   dateTo = '',
-  worker = '',
+  workers = [],
   projectId = '',
 } = {}) {
   const range = resolveDateRange(dateFrom, dateTo);
@@ -341,10 +345,12 @@ export async function getAdvanceSummary({
     projectId
   );
   advanceSql += advFilterSql;
-  if (worker) {
-    advanceSql += ` AND a.worker_name = ?`;
-    advanceParams.push(worker);
-  }
+  const { sql: advanceWorkerSql, params: advanceWorkerParams } = workersInClause(
+    'a.worker_name',
+    workers
+  );
+  advanceSql += advanceWorkerSql;
+  advanceParams.push(...advanceWorkerParams);
   advanceSql += ` GROUP BY a.worker_name, a.advance_date`;
 
   const advanceRows = await all(advanceSql, advanceParams);
@@ -364,9 +370,9 @@ export async function getAdvanceSummary({
   }
 
   const dates = allDatesInRange.filter((day) => activeDateSet.has(day));
-  const workers = [...workerSet].sort((a, b) => a.localeCompare(b));
+  const workerNames = [...workerSet].sort((a, b) => a.localeCompare(b));
 
-  const rows = workers.map((workerName) => {
+  const rows = workerNames.map((workerName) => {
     let totalAdvance = 0;
     const daily = {};
 

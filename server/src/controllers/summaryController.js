@@ -1,28 +1,22 @@
 import * as summaryModel from '../models/summaryModel.js';
 import * as projectModel from '../models/projectModel.js';
 import { pickDateQueryFilters } from '../utils/dateUtils.js';
+import { parseWorkersQuery } from '../utils/queryUtils.js';
 
 export async function getDashboardSummary(req, res, next) {
   try {
+    const workers = parseWorkersQuery(req.query);
     const filters = {
       ...pickDateQueryFilters(req.query),
-      worker: req.query.worker || '',
+      workers,
       projectId: req.query.projectId || '',
     };
 
-    const [totals, byWorker, byProject, workers, projects, dailySalarySummary, advanceSummary] =
+    const [totals, byWorker, byProject, allWorkers, projects, dailySalarySummary, advanceSummary] =
       await Promise.all([
         summaryModel.getSummary(filters),
-        summaryModel.getSummaryByWorker({
-          dateFrom: filters.dateFrom,
-          dateTo: filters.dateTo,
-          projectId: filters.projectId,
-        }),
-        summaryModel.getSummaryByProject({
-          dateFrom: filters.dateFrom,
-          dateTo: filters.dateTo,
-          worker: filters.worker,
-        }),
+        summaryModel.getSummaryByWorker(filters),
+        summaryModel.getSummaryByProject(filters),
         summaryModel.getAllWorkers(),
         projectModel.findAllProjects(),
         summaryModel.getDailySalarySummary(filters),
@@ -35,7 +29,7 @@ export async function getDashboardSummary(req, res, next) {
         totals,
         byWorker,
         byProject,
-        workers,
+        workers: allWorkers,
         projects,
         dailySalarySummary,
         advanceSummary,

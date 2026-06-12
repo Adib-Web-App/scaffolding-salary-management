@@ -76,8 +76,15 @@ export const advancesApi = {
 
 export const summaryApi = {
   get: (params = {}) => {
-    const q = new URLSearchParams(params).toString();
-    return request(`/summary?${q}`);
+    const { workers, ...rest } = params;
+    const q = new URLSearchParams();
+    Object.entries(rest).forEach(([key, value]) => {
+      if (value !== '' && value != null) q.set(key, value);
+    });
+    if (Array.isArray(workers) && workers.length > 0) {
+      q.set('workers', workers.join(','));
+    }
+    return request(`/summary?${q.toString()}`);
   },
 };
 
