@@ -66,6 +66,7 @@ export default function DashboardPage() {
     { key: 'total_volume_share', label: 'Volume Share', render: (r) => formatNumber(r.total_volume_share) },
     { key: 'total_salary', label: 'Salary', render: (r) => formatRM(r.total_salary) },
     { key: 'total_advance', label: 'Advance', render: (r) => formatRM(r.total_advance) },
+    { key: 'total_housekeeping', label: 'Housekeeping', render: (r) => formatRM(r.total_housekeeping) },
     { key: 'net_salary', label: 'Net Salary', render: (r) => formatRM(r.net_salary) },
   ];
 
@@ -150,7 +151,7 @@ export default function DashboardPage() {
         <LoadingSpinner className="py-16" size="lg" />
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
             <StatCard
               label="Erection Volume"
               value={formatNumber(data?.totals?.total_erection_volume)}
@@ -163,6 +164,7 @@ export default function DashboardPage() {
             />
             <StatCard label="Total Salary" value={formatRM(data?.totals?.total_salary)} accent="green" />
             <StatCard label="Total Advance" value={formatRM(data?.totals?.total_advance)} accent="amber" />
+            <StatCard label="Total Housekeeping" value={formatRM(data?.totals?.total_housekeeping)} accent="blue" />
             <StatCard label="Net Salary" value={formatRM(data?.totals?.net_salary)} accent="purple" />
           </div>
 

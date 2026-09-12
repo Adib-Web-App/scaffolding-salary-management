@@ -72,15 +72,36 @@ export async function getSummary({ dateFrom = '', dateTo = '', workers = [], pro
   advanceParams.push(...advanceWorkerParams);
 
   const advanceRow = await get(advanceSql, advanceParams);
+
+  let housekeepingSql = `SELECT COALESCE(SUM(amount), 0) as total_housekeeping FROM housekeeping WHERE 1=1`;
+  const housekeepingParams = [];
+  if (dateFrom) {
+    housekeepingSql += ` AND housekeeping_date >= ?`;
+    housekeepingParams.push(dateFrom);
+  }
+  if (dateTo) {
+    housekeepingSql += ` AND housekeeping_date <= ?`;
+    housekeepingParams.push(dateTo);
+  }
+  if (projectId) {
+    housekeepingSql += ` AND project_id = ?`;
+    housekeepingParams.push(projectId);
+  }
+  housekeepingSql += advanceWorkerSql;
+  housekeepingParams.push(...advanceWorkerParams);
+
+  const housekeepingRow = await get(housekeepingSql, housekeepingParams);
   const totalSalary = salaryRow?.total_salary || 0;
   const totalAdvance = advanceRow?.total_advance || 0;
+  const totalHousekeeping = housekeepingRow?.total_housekeeping || 0;
 
   return {
     total_erection_volume: erectionRow?.vol || 0,
     total_dismantle_volume: dismantleRow?.vol || 0,
     total_salary: totalSalary,
     total_advance: totalAdvance,
-    net_salary: totalSalary - totalAdvance,
+    total_housekeeping: totalHousekeeping,
+    net_salary: totalSalary - totalAdvance - totalHousekeeping,
   };
 }
 
@@ -128,9 +149,32 @@ export async function getSummaryByWorker({
   const advanceRows = await all(advanceSql, advanceParams);
   const advanceMap = Object.fromEntries(advanceRows.map((r) => [r.worker_name, r.total_advance]));
 
+  let housekeepingSql = `SELECT worker_name, COALESCE(SUM(amount), 0) as total_housekeeping FROM housekeeping WHERE 1=1`;
+  const housekeepingParams = [];
+  if (dateFrom) {
+    housekeepingSql += ` AND housekeeping_date >= ?`;
+    housekeepingParams.push(dateFrom);
+  }
+  if (dateTo) {
+    housekeepingSql += ` AND housekeeping_date <= ?`;
+    housekeepingParams.push(dateTo);
+  }
+  if (projectId) {
+    housekeepingSql += ` AND project_id = ?`;
+    housekeepingParams.push(projectId);
+  }
+  housekeepingSql += advanceWorkerSql;
+  housekeepingParams.push(...advanceWorkerParams);
+  housekeepingSql += ` GROUP BY worker_name`;
+  const housekeepingRows = await all(housekeepingSql, housekeepingParams);
+  const housekeepingMap = Object.fromEntries(
+    housekeepingRows.map((r) => [r.worker_name, r.total_housekeeping])
+  );
+
   const workerSet = new Set([
     ...workRows.map((r) => r.worker_name),
     ...advanceRows.map((r) => r.worker_name),
+    ...housekeepingRows.map((r) => r.worker_name),
   ]);
 
   return [...workerSet]
@@ -138,13 +182,15 @@ export async function getSummaryByWorker({
       const work = workRows.find((r) => r.worker_name === name);
       const salary = work?.total_salary || 0;
       const advance = advanceMap[name] || 0;
+      const housekeeping = housekeepingMap[name] || 0;
       return {
         worker_name: name,
         total_jobs: work?.total_jobs || 0,
         total_volume_share: work?.total_volume_share || 0,
         total_salary: salary,
         total_advance: advance,
-        net_salary: salary - advance,
+        total_housekeeping: housekeeping,
+        net_salary: salary - advance - housekeeping,
       };
     })
     .sort((a, b) => b.total_salary - a.total_salary);
@@ -178,6 +224,24 @@ export async function getSummaryByProject({ dateFrom = '', dateTo = '', workers 
 
   sql += ` GROUP BY p.id, p.project_name ORDER BY p.project_name`;
   return all(sql, params);
+}
+
+function housekeepingDateFilter(dateFrom, dateTo, projectId) {
+  let sql = '';
+  const params = [];
+  if (dateFrom) {
+    sql += ` AND h.housekeeping_date >= ?`;
+    params.push(dateFrom);
+  }
+  if (dateTo) {
+    sql += ` AND h.housekeeping_date <= ?`;
+    params.push(dateTo);
+  }
+  if (projectId) {
+    sql += ` AND h.project_id = ?`;
+    params.push(projectId);
+  }
+  return { sql, params };
 }
 
 function advanceDateFilter(dateFrom, dateTo, projectId) {
@@ -242,15 +306,36 @@ export async function getDailySalarySummary({
   advanceSql += advanceWorkerSql;
   advanceSql += ` ORDER BY a.advance_date, a.id`;
 
-  const [salaryRows, advanceRows] = await Promise.all([
+  let housekeepingSql = `
+    SELECT h.id, h.worker_name, h.housekeeping_date AS day, h.amount
+    FROM housekeeping h
+    WHERE 1=1
+  `;
+  const { sql: hkFilterSql, params: hkFilterParams } = housekeepingDateFilter(
+    range.dateFrom,
+    range.dateTo,
+    projectId
+  );
+  housekeepingSql += hkFilterSql;
+  const { sql: housekeepingWorkerSql, params: housekeepingWorkerParams } = workersInClause(
+    'h.worker_name',
+    workers
+  );
+  const housekeepingParams = [...hkFilterParams, ...housekeepingWorkerParams];
+  housekeepingSql += housekeepingWorkerSql;
+  housekeepingSql += ` ORDER BY h.housekeeping_date, h.id`;
+
+  const [salaryRows, advanceRows, housekeepingRows] = await Promise.all([
     all(salarySql, salaryParams),
     all(advanceSql, advanceParams),
+    all(housekeepingSql, housekeepingParams),
   ]);
 
   const workerSet = new Set();
   const activeDateSet = new Set();
   const salaryMap = {};
   const advancesMap = {};
+  const housekeepingMap = {};
 
   for (const row of salaryRows) {
     const value = Number(row.daily_salary) || 0;
@@ -272,6 +357,16 @@ export async function getDailySalarySummary({
     if (!advancesMap[key]) advancesMap[key] = [];
     advancesMap[key].push(value);
   }
+  for (const row of housekeepingRows) {
+    const value = Number(row.amount) || 0;
+    if (value === 0) continue;
+    const day = normalizeDateYMD(row.day);
+    workerSet.add(row.worker_name);
+    activeDateSet.add(day);
+    const key = `${row.worker_name}|${day}`;
+    if (!housekeepingMap[key]) housekeepingMap[key] = [];
+    housekeepingMap[key].push(value);
+  }
 
   const dates = allDatesInRange.filter((day) => activeDateSet.has(day));
   const workerNames = [...workerSet].sort((a, b) => a.localeCompare(b));
@@ -280,6 +375,7 @@ export async function getDailySalarySummary({
     .map((workerName) => {
     let totalSalary = 0;
     let totalAdvance = 0;
+    let totalHousekeeping = 0;
     let hasAnyActivity = false;
     const daily = {};
 
@@ -287,20 +383,25 @@ export async function getDailySalarySummary({
       const key = `${workerName}|${day}`;
       const dailySalary = salaryMap[key] ?? 0;
       const advances = advancesMap[key] || [];
+      const housekeepings = housekeepingMap[key] || [];
       const dailyAdvance = advances.reduce((sum, amount) => sum + amount, 0);
-      const dailyNett = dailySalary - dailyAdvance;
-      const hasActivity = dailySalary !== 0 || advances.length > 0;
+      const dailyHousekeeping = housekeepings.reduce((sum, amount) => sum + amount, 0);
+      const dailyNett = dailySalary - dailyAdvance - dailyHousekeeping;
+      const hasActivity = dailySalary !== 0 || advances.length > 0 || housekeepings.length > 0;
       hasAnyActivity = hasAnyActivity || hasActivity;
 
       daily[day] = {
         salary: dailySalary,
         advances,
+        housekeepings,
         advance: dailyAdvance,
+        housekeeping: dailyHousekeeping,
         nett: dailyNett,
         hasActivity,
       };
       totalSalary += dailySalary;
       totalAdvance += dailyAdvance;
+      totalHousekeeping += dailyHousekeeping;
     }
 
     return {
@@ -308,7 +409,8 @@ export async function getDailySalarySummary({
       daily,
       total_salary: totalSalary,
       total_advance: totalAdvance,
-      total_nett: totalSalary - totalAdvance,
+      total_housekeeping: totalHousekeeping,
+      total_nett: totalSalary - totalAdvance - totalHousekeeping,
       has_any_activity: hasAnyActivity,
     };
     })
@@ -402,10 +504,12 @@ export async function getAdvanceSummary({
 export async function getAllWorkers() {
   const workWorkers = await all(`SELECT DISTINCT worker_name FROM work_job_workers`);
   const advanceWorkers = await all(`SELECT DISTINCT worker_name FROM advances`);
+  const housekeepingWorkers = await all(`SELECT DISTINCT worker_name FROM housekeeping`);
   const attendanceWorkers = await all(`SELECT DISTINCT worker_name FROM attendance`);
   const names = new Set([
     ...workWorkers.map((r) => r.worker_name),
     ...advanceWorkers.map((r) => r.worker_name),
+    ...housekeepingWorkers.map((r) => r.worker_name),
     ...attendanceWorkers.map((r) => r.worker_name),
   ]);
   return [...names].sort();

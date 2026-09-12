@@ -12,6 +12,8 @@ export const PERMISSIONS = {
   'work-entries:export': [ROLES.ADMIN, ROLES.SUPERVISOR],
   'advances:read': [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.VIEWER],
   'advances:write': [ROLES.ADMIN],
+  'housekeeping:read': [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.VIEWER],
+  'housekeeping:write': [ROLES.ADMIN],
   'attendance:read': [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.VIEWER],
   'attendance:write': [ROLES.ADMIN],
   'summary:read': [ROLES.ADMIN, ROLES.SUPERVISOR, ROLES.VIEWER],

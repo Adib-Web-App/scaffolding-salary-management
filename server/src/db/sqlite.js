@@ -139,6 +139,24 @@ async function migrateWorkJobDimensionsTable() {
   );
 }
 
+async function migrateHousekeepingTable() {
+  await run(`
+    CREATE TABLE IF NOT EXISTS housekeeping (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      housekeeping_date TEXT NOT NULL,
+      worker_name TEXT NOT NULL,
+      project_id INTEGER,
+      amount REAL NOT NULL,
+      remarks TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+    )
+  `);
+  await run(`CREATE INDEX IF NOT EXISTS idx_housekeeping_date ON housekeeping(housekeeping_date)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_housekeeping_worker ON housekeeping(worker_name)`);
+}
+
 async function migrateExistingJobsToDimensionLines() {
   await run(`
     INSERT INTO work_job_dimensions (work_entry_id, length, width, height, volume, remarks)
@@ -237,6 +255,7 @@ export async function initDatabase() {
   await migrateAdvancesProjectColumn();
   await migrateWorkJobsLocationColumn();
   await migrateWorkJobsRemarksColumn();
+  await migrateHousekeepingTable();
   await migrateLegacyWorkEntries();
   await migrateExistingJobsToDimensionLines();
   // Idempotent: inserts default users only when users table is empty (never deletes/resets).

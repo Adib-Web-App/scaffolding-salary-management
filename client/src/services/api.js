@@ -74,6 +74,16 @@ export const advancesApi = {
   remove: (id) => request(`/advances/${id}`, { method: 'DELETE' }),
 };
 
+export const housekeepingApi = {
+  list: (params = {}) => {
+    const q = new URLSearchParams(params).toString();
+    return request(`/housekeeping?${q}`);
+  },
+  create: (body) => request('/housekeeping', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id, body) => request(`/housekeeping/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  remove: (id) => request(`/housekeeping/${id}`, { method: 'DELETE' }),
+};
+
 export const summaryApi = {
   get: (params = {}) => {
     const { workers, ...rest } = params;

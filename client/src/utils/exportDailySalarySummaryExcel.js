@@ -43,6 +43,13 @@ function formatDailyExcelCell(cell) {
       font: { color: { argb: 'FFDC2626' }, size: 9 },
     });
   }
+  for (const amount of cell.housekeepings || []) {
+    if (richText.length) richText.push({ text: '\n', font: { color: { argb: 'FF2563EB' }, size: 9 } });
+    richText.push({
+      text: `(${formatRM(amount)})`,
+      font: { color: { argb: 'FF2563EB' }, size: 9 },
+    });
+  }
   return richText.length ? { richText } : '';
 }
 
@@ -66,6 +73,7 @@ export async function exportDailySalarySummaryToExcel(dailySalarySummary) {
     ...dateLabels,
     'Total Salary',
     'Total Advance',
+    'Total Housekeeping',
     'Total Nett Salary',
   ];
 
@@ -90,6 +98,7 @@ export async function exportDailySalarySummaryToExcel(dailySalarySummary) {
       ...dates.map((day) => formatDailyExcelCell(row.daily?.[day])),
       Number(row.total_salary) || 0,
       Number(row.total_advance) || 0,
+      Number(row.total_housekeeping) || 0,
       Number(row.total_nett) || 0,
     ];
     const dataRow = sheet.addRow(values);
@@ -97,7 +106,8 @@ export async function exportDailySalarySummaryToExcel(dailySalarySummary) {
       const cell = row.daily?.[day];
       const salaryLines = Number(cell?.salary) !== 0 ? 1 : 0;
       const advanceLines = cell?.advances?.length || 0;
-      return Math.max(max, salaryLines + advanceLines);
+      const housekeepingLines = cell?.housekeepings?.length || 0;
+      return Math.max(max, salaryLines + advanceLines + housekeepingLines);
     }, 1);
     dataRow.height = Math.max(18, lineCount * 14);
     dataRow.eachCell((cell, colNumber) => {

@@ -138,6 +138,10 @@ export default function PayrollPage() {
               <p className="text-sm text-slate-600">Advance Deduction</p>
               <p className="text-xl font-bold text-amber-800">{formatRM(preview.total_advance)}</p>
             </div>
+            <div className="rounded-lg bg-sky-50 p-4">
+              <p className="text-sm text-slate-600">Housekeeping Deduction</p>
+              <p className="text-xl font-bold text-sky-800">{formatRM(preview.total_housekeeping)}</p>
+            </div>
           </div>
           <div className="mt-6 rounded-lg border-2 border-primary-200 bg-primary-50 p-6">
             <p className="text-sm font-medium text-primary-800">Net Salary</p>

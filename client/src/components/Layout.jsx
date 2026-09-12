@@ -10,6 +10,7 @@ const titles = {
   '/projects': 'Project Management',
   '/work-entries': 'Daily Work Entry',
   '/advances': 'Advance Payments',
+  '/housekeeping': 'Housekeeping',
   '/performance': 'Worker Performance',
   '/attendance': 'Attendance System',
   '/payroll': 'Payroll & Payslip',

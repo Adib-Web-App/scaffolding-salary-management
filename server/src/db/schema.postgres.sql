@@ -52,6 +52,17 @@ CREATE TABLE IF NOT EXISTS advances (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS housekeeping (
+  id SERIAL PRIMARY KEY,
+  housekeeping_date TEXT NOT NULL,
+  worker_name TEXT NOT NULL,
+  project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+  amount DOUBLE PRECISION NOT NULL,
+  remarks TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS attendance (
   id SERIAL PRIMARY KEY,
   attendance_date TEXT NOT NULL,
@@ -75,6 +86,8 @@ CREATE INDEX IF NOT EXISTS idx_work_job_workers_name ON work_job_workers(worker_
 CREATE INDEX IF NOT EXISTS idx_work_job_dimensions_entry ON work_job_dimensions(work_entry_id);
 CREATE INDEX IF NOT EXISTS idx_advances_date ON advances(advance_date);
 CREATE INDEX IF NOT EXISTS idx_advances_worker ON advances(worker_name);
+CREATE INDEX IF NOT EXISTS idx_housekeeping_date ON housekeeping(housekeeping_date);
+CREATE INDEX IF NOT EXISTS idx_housekeeping_worker ON housekeeping(worker_name);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(attendance_date);
 CREATE INDEX IF NOT EXISTS idx_attendance_worker ON attendance(worker_name);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);

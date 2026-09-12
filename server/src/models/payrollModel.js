@@ -26,6 +26,15 @@ export async function getWorkerPayroll(workerName, year, month) {
     [workerName, monthStart, monthEnd]
   );
 
+  const housekeeping = await get(
+    `
+    SELECT COALESCE(SUM(amount), 0) as total_housekeeping
+    FROM housekeeping
+    WHERE worker_name = ? AND housekeeping_date >= ? AND housekeeping_date <= ?
+    `,
+    [workerName, monthStart, monthEnd]
+  );
+
   const jobs = await all(
     `
     SELECT j.entry_date, j.work_type, j.volume, p.project_name,
@@ -41,6 +50,7 @@ export async function getWorkerPayroll(workerName, year, month) {
 
   const totalEarnings = work?.total_earnings || 0;
   const totalAdvance = advance?.total_advance || 0;
+  const totalHousekeeping = housekeeping?.total_housekeeping || 0;
 
   return {
     worker_name: workerName,
@@ -49,7 +59,8 @@ export async function getWorkerPayroll(workerName, year, month) {
     total_volume_share: work?.total_volume_share || 0,
     total_earnings: totalEarnings,
     total_advance: totalAdvance,
-    net_salary: totalEarnings - totalAdvance,
+    total_housekeeping: totalHousekeeping,
+    net_salary: totalEarnings - totalAdvance - totalHousekeeping,
     job_details: jobs,
   };
 }

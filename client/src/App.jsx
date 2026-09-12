@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage';
 import ProjectsPage from './pages/ProjectsPage';
 import WorkEntriesPage from './pages/WorkEntriesPage';
 import AdvancesPage from './pages/AdvancesPage';
+import HousekeepingPage from './pages/HousekeepingPage';
 import PerformancePage from './pages/PerformancePage';
 import AttendancePage from './pages/AttendancePage';
 import PayrollPage from './pages/PayrollPage';
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="work-entries" element={<WorkEntriesPage />} />
         <Route path="advances" element={<AdvancesPage />} />
+        <Route path="housekeeping" element={<HousekeepingPage />} />
         <Route path="performance" element={<PerformancePage />} />
         <Route path="attendance" element={<AttendancePage />} />
         <Route path="payroll" element={<PayrollPage />} />

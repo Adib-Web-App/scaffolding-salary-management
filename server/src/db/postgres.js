@@ -79,6 +79,23 @@ async function migrateWorkJobDimensionsTable() {
   );
 }
 
+async function migrateHousekeepingTable() {
+  await getPool().query(`
+    CREATE TABLE IF NOT EXISTS housekeeping (
+      id SERIAL PRIMARY KEY,
+      housekeeping_date TEXT NOT NULL,
+      worker_name TEXT NOT NULL,
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      amount DOUBLE PRECISION NOT NULL,
+      remarks TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await getPool().query(`CREATE INDEX IF NOT EXISTS idx_housekeeping_date ON housekeeping(housekeeping_date)`);
+  await getPool().query(`CREATE INDEX IF NOT EXISTS idx_housekeeping_worker ON housekeeping(worker_name)`);
+}
+
 async function migrateExistingJobsToDimensionLines() {
   await getPool().query(`
     INSERT INTO work_job_dimensions (work_entry_id, length, width, height, volume, remarks)
@@ -103,6 +120,7 @@ export async function initDatabase() {
 
   await migrateWorkJobsColumns();
   await migrateWorkJobDimensionsTable();
+  await migrateHousekeepingTable();
   await migrateExistingJobsToDimensionLines();
 
   await seedDefaultUsers(parseCount);
