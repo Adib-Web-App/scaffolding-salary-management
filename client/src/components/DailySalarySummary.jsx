@@ -3,9 +3,26 @@ import toast from 'react-hot-toast';
 import { formatRM } from '../services/api';
 import { exportDailySalarySummaryToExcel, formatDateColumnLabel } from '../utils/exportDailySalarySummaryExcel';
 
-function formatDailyCell(cell) {
+function DailyCell({ cell }) {
   if (!cell?.hasActivity) return '—';
-  return formatRM(cell.nett);
+
+  const advances = Array.isArray(cell.advances) ? cell.advances : [];
+  const hasSalary = Number(cell.salary) !== 0;
+
+  if (!hasSalary && advances.length === 0) return '—';
+
+  return (
+    <div className="flex flex-col items-end gap-0.5 leading-tight">
+      {hasSalary && (
+        <span className="tabular-nums text-slate-700">{formatRM(cell.salary)}</span>
+      )}
+      {advances.map((amount, index) => (
+        <span key={`${amount}-${index}`} className="text-xs tabular-nums text-red-600">
+          ({formatRM(amount)})
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export default function DailySalarySummary({ dailySalarySummary, loading }) {
@@ -40,7 +57,7 @@ export default function DailySalarySummary({ dailySalarySummary, loading }) {
         <div>
           <h2 className="text-base font-semibold text-slate-900">Daily Salary Summary</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Daily nett per worker (salary − advance) for each date in the filter range.
+            Daily salary per worker, with each advance listed separately below in red.
             {rangeLabel && <span className="ml-1 font-medium text-slate-600">{rangeLabel}</span>}
           </p>
         </div>
@@ -95,15 +112,9 @@ export default function DailySalarySummary({ dailySalarySummary, loading }) {
                   </td>
                   {dates.map((day) => {
                     const cell = row.daily?.[day];
-                    const negative = cell?.hasActivity && cell.nett < 0;
                     return (
-                      <td
-                        key={day}
-                        className={`whitespace-nowrap px-3 py-2.5 text-right tabular-nums ${
-                          negative ? 'text-red-600' : 'text-slate-700'
-                        }`}
-                      >
-                        {formatDailyCell(cell)}
+                      <td key={day} className="whitespace-nowrap px-3 py-2.5 text-right align-top">
+                        <DailyCell cell={cell} />
                       </td>
                     );
                   })}

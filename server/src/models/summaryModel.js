@@ -224,8 +224,7 @@ export async function getDailySalarySummary({
   salarySql += ` GROUP BY w.worker_name, j.entry_date`;
 
   let advanceSql = `
-    SELECT a.worker_name, a.advance_date AS day,
-           COALESCE(SUM(a.amount), 0) AS daily_advance
+    SELECT a.id, a.worker_name, a.advance_date AS day, a.amount
     FROM advances a
     WHERE 1=1
   `;
@@ -241,7 +240,7 @@ export async function getDailySalarySummary({
   );
   const advanceParams = [...advFilterParams, ...advanceWorkerParams];
   advanceSql += advanceWorkerSql;
-  advanceSql += ` GROUP BY a.worker_name, a.advance_date`;
+  advanceSql += ` ORDER BY a.advance_date, a.id`;
 
   const [salaryRows, advanceRows] = await Promise.all([
     all(salarySql, salaryParams),
@@ -251,7 +250,7 @@ export async function getDailySalarySummary({
   const workerSet = new Set();
   const activeDateSet = new Set();
   const salaryMap = {};
-  const advanceMap = {};
+  const advancesMap = {};
 
   for (const row of salaryRows) {
     const value = Number(row.daily_salary) || 0;
@@ -264,14 +263,14 @@ export async function getDailySalarySummary({
     salaryMap[key] = value;
   }
   for (const row of advanceRows) {
-    const value = Number(row.daily_advance) || 0;
+    const value = Number(row.amount) || 0;
+    if (value === 0) continue;
     const day = normalizeDateYMD(row.day);
-    if (value !== 0) {
-      workerSet.add(row.worker_name);
-      activeDateSet.add(day);
-    }
+    workerSet.add(row.worker_name);
+    activeDateSet.add(day);
     const key = `${row.worker_name}|${day}`;
-    advanceMap[key] = value;
+    if (!advancesMap[key]) advancesMap[key] = [];
+    advancesMap[key].push(value);
   }
 
   const dates = allDatesInRange.filter((day) => activeDateSet.has(day));
@@ -287,13 +286,15 @@ export async function getDailySalarySummary({
     for (const day of dates) {
       const key = `${workerName}|${day}`;
       const dailySalary = salaryMap[key] ?? 0;
-      const dailyAdvance = advanceMap[key] ?? 0;
+      const advances = advancesMap[key] || [];
+      const dailyAdvance = advances.reduce((sum, amount) => sum + amount, 0);
       const dailyNett = dailySalary - dailyAdvance;
-      const hasActivity = dailySalary !== 0 || dailyAdvance !== 0;
+      const hasActivity = dailySalary !== 0 || advances.length > 0;
       hasAnyActivity = hasAnyActivity || hasActivity;
 
       daily[day] = {
         salary: dailySalary,
+        advances,
         advance: dailyAdvance,
         nett: dailyNett,
         hasActivity,

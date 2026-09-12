@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { formatRM } from '../services/api';
 import { formatDateColumnLabel, todayYMD } from './dateUtils.js';
 
 export { formatDateColumnLabel };
@@ -16,11 +17,33 @@ function autoFitColumns(worksheet) {
   worksheet.columns.forEach((column) => {
     let maxLength = 10;
     column.eachCell?.({ includeEmpty: false }, (cell) => {
-      const cellValue = cell.value?.toString?.() || '';
-      maxLength = Math.max(maxLength, cellValue.length + 2);
+      const cellValue = cell.value?.richText
+        ? cell.value.richText.map((part) => part.text).join('')
+        : cell.value?.toString?.() || '';
+      const longest = cellValue.split('\n').reduce((max, line) => Math.max(max, line.length), 0);
+      maxLength = Math.max(maxLength, longest + 2);
     });
     column.width = Math.min(Math.max(maxLength, 12), 28);
   });
+}
+
+function formatDailyExcelCell(cell) {
+  if (!cell?.hasActivity) return '';
+  const richText = [];
+  if (Number(cell.salary) !== 0) {
+    richText.push({
+      text: formatRM(cell.salary),
+      font: { color: { argb: 'FF334155' } },
+    });
+  }
+  for (const amount of cell.advances || []) {
+    if (richText.length) richText.push({ text: '\n', font: { color: { argb: 'FFDC2626' }, size: 9 } });
+    richText.push({
+      text: `(${formatRM(amount)})`,
+      font: { color: { argb: 'FFDC2626' }, size: 9 },
+    });
+  }
+  return richText.length ? { richText } : '';
 }
 
 /**
@@ -64,18 +87,22 @@ export async function exportDailySalarySummaryToExcel(dailySalarySummary) {
   for (const row of rows) {
     const values = [
       row.worker_name,
-      ...dates.map((day) => {
-        const cell = row.daily?.[day];
-        if (!cell?.hasActivity) return '';
-        return Number(cell.nett) || 0;
-      }),
+      ...dates.map((day) => formatDailyExcelCell(row.daily?.[day])),
       Number(row.total_salary) || 0,
       Number(row.total_advance) || 0,
       Number(row.total_nett) || 0,
     ];
     const dataRow = sheet.addRow(values);
+    const lineCount = dates.reduce((max, day) => {
+      const cell = row.daily?.[day];
+      const salaryLines = Number(cell?.salary) !== 0 ? 1 : 0;
+      const advanceLines = cell?.advances?.length || 0;
+      return Math.max(max, salaryLines + advanceLines);
+    }, 1);
+    dataRow.height = Math.max(18, lineCount * 14);
     dataRow.eachCell((cell, colNumber) => {
       cell.border = BORDER_STYLE;
+      cell.alignment = { vertical: 'top', horizontal: colNumber === 1 ? 'left' : 'right', wrapText: true };
       if (colNumber > 1 && typeof cell.value === 'number') {
         cell.numFmt = RM_FORMAT;
       }
